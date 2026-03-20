@@ -1,16 +1,23 @@
 const db = require("../configs/db");
 
-const createUser = (name,email,password,role,callback)=>{
- const query = `
- INSERT INTO users (name,email,password,role)
- VALUES (?,?,?,?)
- `;
- db.query(query,[name,email,password,role],callback);
+// Create user
+const createUser = async (name, email, password, role) => {
+  await db.query(
+    "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
+    [name, email, password, role]
+  );
 };
 
-const findUserByEmail = (email,callback)=>{
- const query = "SELECT * FROM users WHERE email=?";
- db.query(query,[email],callback);
+// Find user
+const findUserByEmail = async (email) => {
+  const [rows] = await db.query(
+    "SELECT * FROM users WHERE email=?",
+    [email]
+  );
+  return rows;
 };
 
-module.exports = {createUser,findUserByEmail};
+module.exports = {
+  createUser,
+  findUserByEmail,
+};

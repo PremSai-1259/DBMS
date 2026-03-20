@@ -4,7 +4,9 @@ const db = mysql.createConnection({
   host: "localhost",
   user: "root",
   password: "Premsai@123",
-  database: "demo1"
+  database: "demo1",
+
+  dateStrings: true   // 🔥 IMPORTANT FIX
 });
 
 db.connect((err) => {
@@ -15,4 +17,4 @@ db.connect((err) => {
   }
 });
 
-module.exports = db;
+module.exports = db.promise();
