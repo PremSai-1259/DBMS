@@ -7,7 +7,7 @@ const {
   getFreeSlots,
 } = require("../controllers/availabilitycontroller");
 
-router.post("/availability", verifytoken,checkRole("doctor"),setAvailability);
+router.post("/availability", verifytoken,checkRole("DOCTOR"),setAvailability);
 router.get("/doctor/:id/slots", getFreeSlots);
 
 module.exports = router;

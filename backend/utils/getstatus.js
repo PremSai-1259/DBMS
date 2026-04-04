@@ -3,10 +3,12 @@ const getSlotTime = require("./getslottime");
 const getStatus = (date, slot_number) => {
   const time = getSlotTime(slot_number);
 
+  // Force India Timezone for comparison
   const now = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
   );
 
+  // Ensure date is in YYYY-MM-DD format
   const formattedDate = new Date(date).toISOString().split("T")[0];
 
   const slotStart = new Date(`${formattedDate}T${time.start}:00`);

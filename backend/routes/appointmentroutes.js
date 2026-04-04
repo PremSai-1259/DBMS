@@ -8,6 +8,6 @@ const {
 } = require("../controllers/appointmentcontroller");
 
 router.post("/appointments",verifyToken, bookAppointment);
-router.get("/doctor/bookings",verifyToken,checkRole("doctor"), getBookings);
+router.get("/doctor/bookings",verifyToken,checkRole("DOCTOR"), getBookings);
 
 module.exports = router;

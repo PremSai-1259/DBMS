@@ -10,7 +10,7 @@ const getSlotTime = (slot) => {
 
   let start = `${hour.toString().padStart(2, "0")}:${minutes === 0 ? "00" : minutes}`;
 
-  // End time
+  // End time calculation
   let endMinutes = totalMinutes + 30;
   let endHour = startHour + Math.floor(endMinutes / 60);
   let endMin = endMinutes % 60;

@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { createUser, findUserByEmail } = require("../models/usermodel");
+
 //SIGN UP
 const signup = async (req, res) => {
   const { name, email, password, role } = req.body;
@@ -10,7 +11,7 @@ const signup = async (req, res) => {
   }
 
   try {
-    // ✅ STEP 1: Check if email exists
+    // Matches your USERS table lookup
     const existingUser = await findUserByEmail(email);
 
     if (existingUser.length > 0) {
@@ -19,10 +20,9 @@ const signup = async (req, res) => {
       });
     }
 
-    // ✅ STEP 2: Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ✅ STEP 3: Insert user
+    // Passes name (for full_name) and email to your profile tables
     await createUser(name, email, hashedPassword, role);
 
     res.json({ message: "User created successfully" });
@@ -31,11 +31,11 @@ const signup = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // ✅ FIX: use await
     const result = await findUserByEmail(email);
 
     if (result.length === 0) {
@@ -44,7 +44,9 @@ const login = async (req, res) => {
 
     const user = result[0];
 
-    // ✅ FIX: await bcrypt
+    console.log("Password from Postman:", password);
+console.log("Hash from Database:", user.password);
+console.log("Hash Length (Should be 60):", user.password.length);
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
@@ -53,7 +55,7 @@ const login = async (req, res) => {
 
     const token = jwt.sign(
       {
-        id: user.id,
+        id: user.user_id, // Updated to user_id
         role: user.role
       },
       "secretkey",
@@ -70,4 +72,5 @@ const login = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
 module.exports = { signup, login };

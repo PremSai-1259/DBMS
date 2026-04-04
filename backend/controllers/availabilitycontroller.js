@@ -4,14 +4,15 @@ const {
 } = require("../models/availabilitymodel");
 
 const { getBookedSlots } = require("../models/appointmentmodel");
+// Import the model to fetch doctor profile details
+const { getDoctorByUserId } = require("../models/profilemodel"); 
 
 const getSlotTime = require("../utils/getslottime");
 const getStatus = require("../utils/getstatus");
 
-
 // ================= SET AVAILABILITY =================
 const setAvailability = async (req, res) => {
-  const doctor_id = req.user.id;
+  const userId = req.user.id; // From verifyToken
   const { date, slots } = req.body;
 
   try {
@@ -21,6 +22,18 @@ const setAvailability = async (req, res) => {
       });
     }
 
+    // 1. Get the actual doctor_id from the profile table
+    const doctorProfile = await getDoctorByUserId(userId);
+    
+    if (!doctorProfile) {
+      return res.status(404).json({ 
+        message: "Doctor profile not found. Please create a profile before setting availability." 
+      });
+    }
+
+    const doctor_id = doctorProfile.doctor_id;
+
+    // 2. Check existing slots for the specific doctor_id
     const existingSlotsData = await getAvailableSlots(doctor_id, date);
 
     const existingSlots = new Set(
@@ -37,29 +50,24 @@ const setAvailability = async (req, res) => {
       });
     }
 
-    for (let slot of newSlots) {
-      await insertSlot(doctor_id, date, slot);
-    }
-
-    if (duplicateSlots.length > 0) {
-      return res.json({
-        message: "Some slots added, some were duplicates",
-        added: newSlots,
-        duplicates: duplicateSlots
-      });
+    // 3. Insert using the correct doctor_id and dynamic times
+    for (let slotNumber of newSlots) {
+      const time = getSlotTime(slotNumber); // Use your utility for accurate times
+      await insertSlot(doctor_id, date, slotNumber, time.start, time.end);
     }
 
     res.json({
-      message: "All slots added successfully",
-      added: newSlots
+      success: true,
+      message: duplicateSlots.length > 0 ? "Some slots added, some were duplicates" : "All slots added successfully",
+      added: newSlots,
+      duplicates: duplicateSlots
     });
 
   } catch (err) {
-    console.log(err);
+    console.error("Set Availability Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 };
-
 
 // ================= GET SLOTS =================
 const getFreeSlots = async (req, res) => {
@@ -80,16 +88,17 @@ const getFreeSlots = async (req, res) => {
 
     const slots = available.map(r => {
       const slot = r.slot_number;
+      const slot_id = r.slot_id; // Added this to include the ID from the database
       const time = getSlotTime(slot);
 
       let status = getStatus(date, slot);
 
-      // 🔥 booking only affects upcoming
       if (status === "upcoming" && bookedSet.has(slot)) {
         status = "booked";
       }
 
       return {
+        slot_id, // Now returned in the response
         slot,
         start: time.start,
         end: time.end,
@@ -106,13 +115,14 @@ const getFreeSlots = async (req, res) => {
 
     slots.sort((a, b) => a.slot - b.slot);
 
-    res.json({ slots });
+    res.json({ success: true, slots });
 
   } catch (err) {
-    console.log(err);
+    console.error("Get Free Slots Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 };
+
 
 module.exports = {
   setAvailability,
