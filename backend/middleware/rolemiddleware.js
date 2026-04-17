@@ -1,12 +1,15 @@
-const checkRole = (role) => {
- return (req,res,next)=>{
-  if(req.user.role !== role){
-   return res.status(403).json({
-    message:"Access forbidden"
-   });
-  }
-  next();
- };
+const roleMiddleware = (allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: `Access denied. Allowed roles: ${allowedRoles.join(', ')}` });
+    }
+
+    next();
+  };
 };
 
-module.exports = checkRole;
+module.exports = roleMiddleware;

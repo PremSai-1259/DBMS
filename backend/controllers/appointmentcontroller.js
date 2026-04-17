@@ -1,155 +1,204 @@
-const {
-  checkSlotBooked,
-  createAppointment,
-  getBookedSlots,
-  getDoctorBookings,
-  getDoctorIdByUserId, // Added this import
-} = require("../models/appointmentmodel");
+const AppointmentModel = require('../models/Appointment');
+const AppointmentSlotModel = require('../models/AppointmentSlot');
+const PatientProfileModel = require('../models/PatientProfile');
+const DoctorProfileModel = require('../models/DoctorProfile');
+const UserModel = require('../models/User');
+const NotificationModel = require('../models/Notification');
+const { sendEmail, emailTemplates } = require('../utils/helpers');
 
-const { getAvailableSlots } = require("../models/availabilitymodel");
-const db = require("../configs/db"); // Needed for the patient_id lookup
+class AppointmentController {
+  static async bookAppointment(req, res) {
+    try {
+      const patientId = req.user.id;
+      const { doctorId, slotId } = req.body;
 
-const getSlotTime = require("../utils/getslottime");
-const getStatus = require("../utils/getstatus");
+      // Validation
+      if (!doctorId || !slotId) {
+        return res.status(400).json({ error: 'doctorId and slotId required' });
+      }
 
-// ================= BOOK APPOINTMENT =================
-const bookAppointment = async (req, res) => {
-  const user_id = req.user.id; // This is the ID from the JWT token (e.g., 6)
-  let { doctor_id, date, slot_number, slot_id, reason } = req.body;
+      // PATIENT RESTRICTION: Check if patient profile exists
+      const patientProfile = await PatientProfileModel.findByUserId(patientId);
+      if (!patientProfile) {
+        return res.status(400).json({ error: 'Patient profile must be created first' });
+      }
 
-  try {
-    if (!doctor_id || !date || !slot_number || !slot_id) {
-      return res.status(400).json({
-        message: "doctor_id, date, slot_number, and slot_id are required"
+      // Get slot details
+      const slot = await AppointmentSlotModel.getSlotById(slotId);
+      if (!slot) {
+        return res.status(404).json({ error: 'Slot not found' });
+      }
+
+      // Validate slot belongs to doctor
+      if (slot.doctor_id != doctorId) {
+        return res.status(400).json({ error: 'Slot does not belong to this doctor' });
+      }
+
+      // Validate slot is available
+      if (!slot.is_active || slot.is_booked) {
+        return res.status(400).json({ error: 'Slot is not available' });
+      }
+
+      // Prevent double booking
+      const isDuplicate = await AppointmentModel.checkDuplicateBooking(patientId, slotId);
+      if (isDuplicate) {
+        return res.status(409).json({ error: 'You already have a booking for this slot' });
+      }
+
+      // Create appointment
+      const appointmentId = await AppointmentModel.create(patientId, doctorId, slotId);
+
+      // Mark slot as booked
+      await AppointmentSlotModel.markAsBooked(slotId);
+
+      // Create notification for patient
+      await NotificationModel.create(patientId, 'appointment_booked', 
+        'Your appointment has been confirmed');
+
+      // Create notification for doctor
+      const patient = await UserModel.findById(patientId);
+      await NotificationModel.create(doctorId, 'appointment_booked', 
+        `New appointment from ${patient.name}`);
+
+      res.status(201).json({
+        message: 'Appointment booked successfully',
+        appointmentId,
+        slotNumber: slot.slot_number,
+        slotDate: slot.slot_date
       });
+    } catch (error) {
+      console.error('Book appointment error:', error);
+      res.status(500).json({ error: error.message });
     }
-
-    // 1. SILENT LOOKUP: Find the correct patient_id (e.g., 4) linked to this user_id (6)
-    const [patientRows] = await db.query(
-      "SELECT patient_id FROM PATIENTS WHERE user_id = ?", 
-      [user_id]
-    );
-
-    if (patientRows.length === 0) {
-      return res.status(404).json({
-        message: "Patient profile not found. Please complete your profile first."
-      });
-    }
-
-    const patient_id = patientRows[0].patient_id; // Now it correctly uses 4
-
-    slot_number = Number(slot_number);
-
-    // 2. CHECK AVAILABILITY
-    const availableSlots = await getAvailableSlots(doctor_id, date);
-
-    if (!availableSlots || availableSlots.length === 0) {
-      return res.status(400).json({
-        message: "Doctor has not set availability for this date"
-      });
-    }
-
-    const isAvailable = availableSlots.some(
-      s => Number(s.slot_number) === slot_number && s.is_booked === 0
-    );
-
-    if (!isAvailable) {
-      return res.status(400).json({
-        message: "Slot not available or already booked"
-      });
-    }
-
-    // 3. CHECK STATUS
-    const status = getStatus(date, slot_number);
-    if (status === "running" || status === "completed") {
-      return res.status(400).json({
-        message: "Cannot book running or completed slots"
-      });
-    }
-
-    // 4. FINAL INSERT: Using the actual patient_id from the PATIENTS table
-    await createAppointment(doctor_id, patient_id, date, slot_number, slot_id, reason);
-
-    return res.json({
-      success: true,
-      message: "Appointment booked successfully"
-    });
-
-  } catch (err) {
-    console.log("BOOK ERROR:", err);
-
-    if (err.code === "ER_DUP_ENTRY") {
-      return res.status(400).json({
-        message: "Slot already booked"
-      });
-    }
-
-    // This handles the Foreign Key error specifically if something goes wrong
-    if (err.code === "ER_NO_REFERENCED_ROW_2") {
-       return res.status(400).json({
-        message: "Database Error: patient_id or slot_id does not exist."
-      });
-    }
-
-    return res.status(500).json({
-      message: "Server error",
-      error: err.message
-    });
   }
-};
 
-// ================= DOCTOR BOOKINGS =================
-const getBookings = async (req, res) => {
-  const user_id = req.user.id; 
-  const { date } = req.query;
+  static async cancelAppointment(req, res) {
+    try {
+      const doctorId = req.user.id;
+      const { appointmentId } = req.params;
+      const { cancelReason } = req.body;
 
-  try {
-    if (!date) {
-      return res.status(400).json({ message: "date query parameter is required" });
-    }
+      // Validation
+      if (!cancelReason) {
+        return res.status(400).json({ error: 'cancelReason required' });
+      }
 
-    // Use model to find doctor_id from the user_id in the token
-    const doctor_id = await getDoctorIdByUserId(user_id);
-    
-    if (!doctor_id) {
-      return res.status(404).json({ message: "Doctor profile not found." });
-    }
+      // Get appointment
+      const appointment = await AppointmentModel.findById(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({ error: 'Appointment not found' });
+      }
 
-    const bookings = await getDoctorBookings(doctor_id, date);
+      // Verify doctor ownership
+      if (appointment.doctor_id !== doctorId) {
+        return res.status(403).json({ error: 'Only the assigned doctor can cancel this appointment' });
+      }
 
-    if (!bookings || bookings.length === 0) {
-      return res.json({
-        message: "No bookings found for this date",
-        bookings: []
+      // Check if already cancelled
+      if (appointment.status === 'cancelled') {
+        return res.status(400).json({ error: 'Appointment is already cancelled' });
+      }
+
+      // DOCTOR RESTRICTION: Verify doctor is verified
+      const isVerified = await DoctorProfileModel.isVerified(doctorId);
+      if (!isVerified) {
+        return res.status(403).json({ error: 'Only verified doctors can cancel appointments' });
+      }
+
+      // Cancel appointment
+      await AppointmentModel.cancel(appointmentId, cancelReason);
+
+      // Mark slot as available
+      await AppointmentSlotModel.markAsAvailable(appointment.slot_id);
+
+      // Get patient info
+      const patient = await UserModel.findById(appointment.patient_id);
+      const doctor = await UserModel.findById(doctorId);
+
+      // Send email to patient
+      const emailTemplate = emailTemplates.appointmentCancelled(patient.name, doctor.name, cancelReason);
+      await sendEmail(patient.email, emailTemplate.subject, emailTemplate.html);
+
+      // Create notification for patient
+      await NotificationModel.create(appointment.patient_id, 'appointment_cancelled', 
+        `Your appointment has been cancelled. Reason: ${cancelReason}`);
+
+      res.json({
+        message: 'Appointment cancelled successfully',
+        appointmentId
       });
+    } catch (error) {
+      console.error('Cancel appointment error:', error);
+      res.status(500).json({ error: error.message });
     }
-
-    const result = bookings.map(b => {
-      const time = getSlotTime(b.slot_number);
-      return {
-        appointment_id: b.appointment_id,
-        patient_name: b.patient_name,
-        patient_phone: b.patient_phone,
-        slot_number: b.slot_number,
-        time_range: `${time.start} - ${time.end}`,
-        reason: b.reason,
-        status: getStatus(b.appointment_date, b.slot_number)
-      };
-    });
-
-    return res.json({
-      success: true,
-      total: result.length,
-      bookings: result
-    });
-
-  } catch (err) {
-    console.log("GET BOOKINGS ERROR:", err);
-    return res.status(500).json({ message: "Server error", error: err.message });
   }
-};
 
-module.exports = {
-  bookAppointment,
-  getBookings,
-};
+  static async getAppointments(req, res) {
+    try {
+      const userId = req.user.id;
+      const userRole = req.user.role;
+
+      let appointments;
+
+      if (userRole === 'patient') {
+        appointments = await AppointmentModel.findByPatientId(userId);
+      } else if (userRole === 'doctor') {
+        appointments = await AppointmentModel.findByDoctorId(userId);
+      } else {
+        return res.status(403).json({ error: 'Invalid role' });
+      }
+
+      res.json({
+        total: appointments.length,
+        appointments: appointments.map(a => ({
+          id: a.id,
+          doctorName: a.doctor_name || a.patient_name,
+          slotDate: a.slot_date,
+          slotNumber: a.slot_number,
+          status: a.status,
+          cancelReason: a.cancel_reason
+        }))
+      });
+    } catch (error) {
+      console.error('Get appointments error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getAppointmentDetails(req, res) {
+    try {
+      const { appointmentId } = req.params;
+      const userId = req.user.id;
+
+      const appointment = await AppointmentModel.getAppointmentDetails(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({ error: 'Appointment not found' });
+      }
+
+      // Verify user has access (patient or doctor of this appointment)
+      if (appointment.patient_id !== userId && appointment.doctor_id !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      res.json({
+        appointment: {
+          id: appointment.id,
+          patientName: appointment.patient_name,
+          patientEmail: appointment.patient_email,
+          doctorName: appointment.doctor_name,
+          doctorEmail: appointment.doctor_email,
+          slotDate: appointment.slot_date,
+          slotNumber: appointment.slot_number,
+          status: appointment.status,
+          cancelReason: appointment.cancel_reason,
+          createdAt: appointment.created_at
+        }
+      });
+    } catch (error) {
+      console.error('Get appointment details error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+}
+
+module.exports = AppointmentController;

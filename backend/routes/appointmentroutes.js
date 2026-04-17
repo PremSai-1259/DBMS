@@ -1,13 +1,21 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const verifyToken = require("../middleware/authmiddleware");
-const checkRole = require("../middleware/rolemiddleware")
-const {
-  bookAppointment,
-  getBookings,
-} = require("../controllers/appointmentcontroller");
+const AppointmentController = require('../controllers/appointmentcontroller');
+const authMiddleware = require('../middleware/authmiddleware');
+const roleMiddleware = require('../middleware/rolemiddleware');
 
-router.post("/appointments",verifyToken, bookAppointment);
-router.get("/doctor/bookings",verifyToken,checkRole("DOCTOR"), getBookings);
+// POST /appointments/book
+router.post('/book', authMiddleware, roleMiddleware(['patient']), 
+  AppointmentController.bookAppointment);
+
+// PUT /appointments/cancel/:id
+router.put('/cancel/:appointmentId', authMiddleware, roleMiddleware(['doctor']), 
+  AppointmentController.cancelAppointment);
+
+// GET /appointments
+router.get('/', authMiddleware, AppointmentController.getAppointments);
+
+// GET /appointments/:id
+router.get('/:appointmentId', authMiddleware, AppointmentController.getAppointmentDetails);
 
 module.exports = router;

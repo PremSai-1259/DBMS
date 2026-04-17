@@ -1,27 +1,43 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
+const ProfileController = require('../controllers/profilecontroller');
+const authMiddleware = require('../middleware/authmiddleware');
+const roleMiddleware = require('../middleware/rolemiddleware');
 
-// Importing your specific controller functions
-const { 
-  upsertProfile, 
-  getMyProfile 
-} = require("../controllers/profilecontroller"); // Ensure path/name matches your file
+// Patient Profile
+// POST /profile (creates patient or doctor profile)
+router.post('/', authMiddleware, (req, res) => {
+  const { age, gender, phone, bloodGroup, specialization, experience, hospitalName, address } = req.body;
+  
+  if (req.user.role === 'patient') {
+    ProfileController.createPatientProfile(req, res);
+  } else if (req.user.role === 'doctor') {
+    ProfileController.createDoctorProfile(req, res);
+  } else {
+    res.status(400).json({ error: 'Invalid role' });
+  }
+});
 
-// Using "verifyToken" to match your appointment route consistency
-const verifyToken = require("../middleware/authmiddleware");
+// GET /profile
+router.get('/', authMiddleware, (req, res) => {
+  if (req.user.role === 'patient') {
+    ProfileController.getPatientProfile(req, res);
+  } else if (req.user.role === 'doctor') {
+    ProfileController.getDoctorProfile(req, res);
+  } else {
+    res.status(400).json({ error: 'Invalid role' });
+  }
+});
 
-/**
- * PATIENT PROFILE ROUTES
- * We use verifyToken here because the controller relies on 
- * req.user.id to identify which patient is performing the action.
- */
-
-// GET /api/patient/me
-// Fetches the profile for the logged-in user
-router.get("/me", verifyToken, getMyProfile);
-
-// POST /api/patient/upsert
-// Handles both Create and Update logic
-router.post("/upsert", verifyToken, upsertProfile);
+// PUT /profile
+router.put('/', authMiddleware, (req, res) => {
+  if (req.user.role === 'patient') {
+    ProfileController.updatePatientProfile(req, res);
+  } else if (req.user.role === 'doctor') {
+    ProfileController.updateDoctorProfile(req, res);
+  } else {
+    res.status(400).json({ error: 'Invalid role' });
+  }
+});
 
 module.exports = router;

@@ -1,101 +1,163 @@
-const {
-  getPatientByUserId,
-  createPatientProfile,
-  updatePatientProfile,
-  getDoctorByUserId,
-  createDoctorProfile,
-  updateDoctorProfile
-} = require("../models/profilemodel");
+const PatientProfileModel = require('../models/PatientProfile');
+const DoctorProfileModel = require('../models/DoctorProfile');
+const UserModel = require('../models/User');
 
-// ================= UPSERT PROFILE (PATIENT & DOCTOR) =================
-const upsertProfile = async (req, res) => {
-  const userId = req.user.id; 
-  const role = req.user.role; // This is 'PATIENT' or 'DOCTOR' from your token
-  const data = req.body;
+class ProfileController {
+  // Patient Profile
+  static async createPatientProfile(req, res) {
+    try {
+      const { age, gender, phone, bloodGroup } = req.body;
+      const userId = req.user.id;
 
-  try {
-    // --- PATIENT LOGIC ---
-    if (role === 'PATIENT') {
-      const patientData = {
-        user_id: userId,
-        full_name: data.fullName,
-        gender: data.gender ? data.gender.toUpperCase() : null,
-        date_of_birth: data.dob,
-        phone: data.phone,
-        email: data.email,
-        address: data.address,
-        blood_group: data.bloodGroup
-      };
-
-      const existing = await getPatientByUserId(userId);
-      if (existing) {
-        await updatePatientProfile(userId, patientData);
-      } else {
-        await createPatientProfile(patientData);
+      // Validation
+      if (!age || !gender || !phone || !bloodGroup) {
+        return res.status(400).json({ error: 'Missing required fields: age, gender, phone, bloodGroup' });
       }
 
-      const updated = await getPatientByUserId(userId);
-      return res.json({ success: true, message: existing ? "Patient profile updated" : "Patient profile created", data: updated });
-    }
-
-    // --- DOCTOR LOGIC ---
-    if (role === 'DOCTOR') {
-      const doctorData = {
-        user_id: userId,
-        full_name: data.fullName,
-        specialization: data.specialization,
-        phone: data.phone,
-        email: data.email,
-        experience_years: data.experienceYears,
-        consultation_fee: data.consultationFee
-      };
-
-      const existing = await getDoctorByUserId(userId);
+      // Check if profile exists
+      const existing = await PatientProfileModel.findByUserId(userId);
       if (existing) {
-        await updateDoctorProfile(userId, doctorData);
-      } else {
-        await createDoctorProfile(doctorData);
+        return res.status(409).json({ error: 'Patient profile already exists' });
       }
 
-      const updated = await getDoctorByUserId(userId);
-      return res.json({ success: true, message: existing ? "Doctor profile updated" : "Doctor profile created", data: updated });
+      // Create profile
+      const profileId = await PatientProfileModel.create(userId, age, gender, phone, bloodGroup);
+
+      res.status(201).json({
+        message: 'Patient profile created successfully',
+        profileId,
+        profile: { userId, age, gender, phone, bloodGroup }
+      });
+    } catch (error) {
+      console.error('Create patient profile error:', error);
+      res.status(500).json({ error: error.message });
     }
-
-    // If role is neither
-    res.status(403).json({ message: "Invalid role for profile creation" });
-
-  } catch (err) {
-    console.error("Controller Error:", err.message);
-    res.status(500).json({ error: err.message });
   }
-};
 
-// ================= GET PROFILE (PATIENT & DOCTOR) =================
-const getMyProfile = async (req, res) => {
-  const userId = req.user.id;
-  const role = req.user.role;
+  static async getPatientProfile(req, res) {
+    try {
+      const userId = req.user.id;
 
-  try {
-    let profile;
-    if (role === 'PATIENT') {
-      profile = await getPatientByUserId(userId);
-    } else if (role === 'DOCTOR') {
-      profile = await getDoctorByUserId(userId);
+      const profile = await PatientProfileModel.findByUserId(userId);
+      if (!profile) {
+        return res.status(404).json({ error: 'Patient profile not found' });
+      }
+
+      const user = await UserModel.findById(userId);
+
+      res.json({
+        profile: {
+          ...profile,
+          name: user.name,
+          email: user.email
+        }
+      });
+    } catch (error) {
+      console.error('Get patient profile error:', error);
+      res.status(500).json({ error: error.message });
     }
-
-    if (!profile) {
-      return res.status(404).json({ message: "Profile not found" });
-    }
-
-    res.json({ success: true, data: profile });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: err.message });
   }
-};
 
-module.exports = {
-  upsertProfile,
-  getMyProfile
-};
+  static async updatePatientProfile(req, res) {
+    try {
+      const userId = req.user.id;
+      const updateData = req.body;
+
+      // Check if profile exists
+      const existing = await PatientProfileModel.findByUserId(userId);
+      if (!existing) {
+        return res.status(404).json({ error: 'Patient profile not found' });
+      }
+
+      // Update profile
+      await PatientProfileModel.updateProfile(userId, updateData);
+
+      res.json({
+        message: 'Patient profile updated successfully'
+      });
+    } catch (error) {
+      console.error('Update patient profile error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Doctor Profile
+  static async createDoctorProfile(req, res) {
+    try {
+      const { specialization, experience, hospitalName, address } = req.body;
+      const userId = req.user.id;
+
+      // Validation
+      if (!specialization || experience === undefined || !hospitalName || !address) {
+        return res.status(400).json({ error: 'Missing required fields: specialization, experience, hospitalName, address' });
+      }
+
+      // Check if profile exists
+      const existing = await DoctorProfileModel.findByUserId(userId);
+      if (existing) {
+        return res.status(409).json({ error: 'Doctor profile already exists' });
+      }
+
+      // Create profile
+      const profileId = await DoctorProfileModel.create(userId, specialization, experience, hospitalName, address);
+
+      res.status(201).json({
+        message: 'Doctor profile created successfully',
+        profileId,
+        profile: { userId, specialization, experience, hospitalName, address, isVerified: false }
+      });
+    } catch (error) {
+      console.error('Create doctor profile error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getDoctorProfile(req, res) {
+    try {
+      const userId = req.user.id;
+
+      const profile = await DoctorProfileModel.findByUserId(userId);
+      if (!profile) {
+        return res.status(404).json({ error: 'Doctor profile not found' });
+      }
+
+      const user = await UserModel.findById(userId);
+
+      res.json({
+        profile: {
+          ...profile,
+          name: user.name,
+          email: user.email
+        }
+      });
+    } catch (error) {
+      console.error('Get doctor profile error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async updateDoctorProfile(req, res) {
+    try {
+      const userId = req.user.id;
+      const updateData = req.body;
+
+      // Check if profile exists
+      const existing = await DoctorProfileModel.findByUserId(userId);
+      if (!existing) {
+        return res.status(404).json({ error: 'Doctor profile not found' });
+      }
+
+      // Update profile
+      await DoctorProfileModel.updateProfile(userId, updateData);
+
+      res.json({
+        message: 'Doctor profile updated successfully'
+      });
+    } catch (error) {
+      console.error('Update doctor profile error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+}
+
+module.exports = ProfileController;
