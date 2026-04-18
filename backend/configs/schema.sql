@@ -76,12 +76,16 @@ CREATE TABLE patient_profiles (
 -- ==============================
 CREATE TABLE doctor_approvals (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    doctor_id INT UNIQUE,
+    doctor_id INT,
     certificate_file_id INT,
 
     status ENUM('pending','approved','rejected') DEFAULT 'pending',
     admin_message TEXT,
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     reviewed_at TIMESTAMP NULL,
+
+    INDEX idx_doctor_status (doctor_id, status),
+    INDEX idx_status (status),
 
     FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (certificate_file_id) REFERENCES files(id) ON DELETE CASCADE

@@ -177,7 +177,7 @@ const AdminDashboard = () => {
                         <div>
                           <p className="text-xs font-medium text-[#4a5a6a] mb-1">Request Date</p>
                           <p className="text-sm text-[#3a7bd5]">
-                            {new Date(doctor.createdAt).toLocaleDateString()}
+                            {new Date(doctor.submittedAt).toLocaleDateString()}
                           </p>
                         </div>
                       </div>

@@ -29,6 +29,11 @@ const DoctorDashboard = () => {
   const { user, logout } = useAuth()
   const { toast, showToast } = useToast()
 
+  // Approval status state
+  const [approvalStatus, setApprovalStatus] = useState(null)
+  const [statusLoading, setStatusLoading] = useState(true)
+
+  // Dashboard state
   const [tab, setTab] = useState('overview')
   const [appointments, setAppointments] = useState([])
   const [slots, setSlots] = useState([])
@@ -38,9 +43,30 @@ const DoctorDashboard = () => {
   const [tagSubmitted, setTagSubmitted] = useState(false)
   const [activeDayIdx, setActiveDayIdx] = useState(0)
 
+  // Load approval status on mount
   useEffect(() => {
-    loadAll()
+    checkApprovalStatus()
   }, [])
+
+  // Load dashboard data only if approved
+  useEffect(() => {
+    if (approvalStatus?.status === 'approved') {
+      loadAll()
+    }
+  }, [approvalStatus])
+
+  const checkApprovalStatus = async () => {
+    setStatusLoading(true)
+    try {
+      const res = await profileService.getApprovalStatus()
+      setApprovalStatus(res.data)
+    } catch (err) {
+      console.error('Failed to check approval status:', err)
+      showToast('Failed to load profile status', 'error')
+    } finally {
+      setStatusLoading(false)
+    }
+  }
 
   const loadAll = async () => {
     setLoading(true)
@@ -67,9 +93,147 @@ const DoctorDashboard = () => {
 
   const displayName = profile
     ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim()
-    : user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Doctor'
+    : user ? `${user.name || user.firstName || ''}` : 'Doctor'
 
-  const specialization = profile?.specialization || user?.specialization || 'Specialist'
+  const specialization = approvalStatus?.doctorProfile?.specialization || 'Pending Verification'
+
+  // =====================================================
+  // PENDING APPROVAL VIEW
+  // =====================================================
+  if (statusLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(160deg, #f8faff 0%, #eff4fb 100%)' }}>
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin mx-auto mb-4" />
+          <p className="text-[#4a5a6a]">Loading profile status...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (approvalStatus?.status === 'pending') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'linear-gradient(160deg, #f5f8ff 0%, #eaf0fb 50%, #dce8f7 100%)' }}>
+        <Toast toast={toast} />
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-3xl p-10 text-center" style={{ boxShadow: '0 20px 60px rgba(45,90,142,0.15)' }}>
+            <div className="text-6xl mb-6">⏳</div>
+            <h2 className="text-2xl font-semibold text-[#1a2a3a] mb-2">
+              Profile Under Review
+            </h2>
+            <p className="text-sm text-[#8a9ab0] mb-6">
+              Your doctor profile and credentials are currently being reviewed by our admin team. This typically takes 24-48 hours.
+            </p>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
+              <p className="text-xs font-medium text-[#3a7bd5] mb-3">📋 Profile Details:</p>
+              <div className="space-y-2 text-xs text-[#4a5a6a]">
+                <div className="flex justify-between">
+                  <span className="font-medium">Specialization:</span>
+                  <span>{approvalStatus?.doctorProfile?.specialization}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Experience:</span>
+                  <span>{approvalStatus?.doctorProfile?.experience} years</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Hospital:</span>
+                  <span>{approvalStatus?.doctorProfile?.hospitalName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Submitted:</span>
+                  <span>{new Date(approvalStatus?.submittedAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-left">
+              <p className="text-xs font-medium text-[#1a9e6a] mb-2">✓ What happens next:</p>
+              <ul className="text-xs text-[#4a5a6a] space-y-1">
+                <li>• Admin verifies your credentials</li>
+                <li>• Certificate validation</li>
+                <li>• Profile approval</li>
+                <li>• Email notification sent to {user?.email}</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={handleLogout}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium text-[#4a5a6a] border border-[#e6ecf5] hover:bg-[#f8f9fc] transition-all">
+                Sign Out
+              </button>
+              <button onClick={checkApprovalStatus}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white transition-all"
+                style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}>
+                Refresh Status
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (approvalStatus?.status === 'rejected') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'linear-gradient(160deg, #f5f8ff 0%, #eaf0fb 50%, #dce8f7 100%)' }}>
+        <Toast toast={toast} />
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-3xl p-10 text-center" style={{ boxShadow: '0 20px 60px rgba(45,90,142,0.15)' }}>
+            <div className="text-6xl mb-6">❌</div>
+            <h2 className="text-2xl font-semibold text-[#e53e3e] mb-2">
+              Profile Rejected
+            </h2>
+            <p className="text-sm text-[#8a9ab0] mb-6">
+              Your doctor profile could not be approved at this time. Please review the feedback below and reapply.
+            </p>
+
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-left">
+              <p className="text-xs font-medium text-[#e53e3e] mb-2">📝 Admin Feedback:</p>
+              <p className="text-sm text-[#4a5a6a]">
+                {approvalStatus?.adminMessage || 'No specific feedback provided'}
+              </p>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-left">
+              <p className="text-xs font-medium text-[#b07a00] mb-2">💡 What to do next:</p>
+              <ul className="text-xs text-[#4a5a6a] space-y-1">
+                <li>• Review the feedback above</li>
+                <li>• Update your certificate or credentials</li>
+                <li>• Contact support for clarification</li>
+                <li>• Reapply with updated information</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={handleLogout}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium text-[#4a5a6a] border border-[#e6ecf5] hover:bg-[#f8f9fc] transition-all">
+                Sign Out
+              </button>
+              <button onClick={() => navigate('/doctor-profile')}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white transition-all"
+                style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}>
+                Update Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // =====================================================
+  // APPROVED DASHBOARD VIEW
+  // =====================================================
+  if (approvalStatus?.status !== 'approved') {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(160deg, #f8faff 0%, #eff4fb 100%)' }}>
+        <div className="text-center">
+          <p className="text-[#4a5a6a]">Profile status unknown. Please try again.</p>
+        </div>
+      </div>
+    )
+  }
 
   const todayAppts = appointments.filter(a => {
     if (!a.date && !a.slot?.date) return false
@@ -117,6 +281,9 @@ const DoctorDashboard = () => {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <span className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#e6f9f2', color: '#1a9e6a' }}>
+            ✓ Approved
+          </span>
           <span className="text-sm text-[#4a5a6a]">Dr. {displayName.split(' ')[1] || displayName.split(' ')[0]}</span>
           <button onClick={handleLogout}
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-[#4a5a6a] hover:text-[#3a7bd5] hover:bg-[#e8f0fb] transition-all">

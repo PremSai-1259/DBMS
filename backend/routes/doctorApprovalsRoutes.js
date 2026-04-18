@@ -4,10 +4,20 @@ const DoctorApprovalController = require('../controllers/doctorApprovalControlle
 const authMiddleware = require('../middleware/authmiddleware');
 const roleMiddleware = require('../middleware/rolemiddleware');
 
-// POST /doctor-approvals/request - Doctor requests approval
+// Doctor routes
+// GET /doctor-approvals/status - Doctor checks their own approval status
+router.get('/status', authMiddleware, roleMiddleware(['doctor']), 
+  DoctorApprovalController.getMyApprovalStatus);
+
+// GET /doctor-approvals/history - Doctor checks approval submission history
+router.get('/history', authMiddleware, roleMiddleware(['doctor']), 
+  DoctorApprovalController.getApprovalHistory);
+
+// POST /doctor-approvals/request - Doctor requests approval or resubmits after rejection
 router.post('/request', authMiddleware, roleMiddleware(['doctor']), 
   DoctorApprovalController.requestApproval);
 
+// Admin routes
 // GET /doctor-approvals/pending - Admin gets pending approvals
 router.get('/pending', authMiddleware, roleMiddleware(['admin']), 
   DoctorApprovalController.getPendingDoctors);

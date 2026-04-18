@@ -13,13 +13,9 @@ export const profileService = {
   updateProfile: (profileData) =>
     api.put('/profile', profileData),
 
-  // Upload file - FormData bypasses default JSON Content-Type
+  // Upload file - Let axios auto-detect FormData and set boundary
   uploadFile: (formData) => {
-    return api.post('/files/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    return api.post('/files/upload', formData)
   },
 
   // Get uploaded files
@@ -29,6 +25,10 @@ export const profileService = {
   // Delete file
   deleteFile: (fileId) =>
     api.delete(`/files/${fileId}`),
+
+  // Doctor: Check own approval status
+  getApprovalStatus: () =>
+    api.get('/doctor-approvals/status'),
 
   // Request doctor approval with certificate
   requestDoctorApproval: (certificateFileId) =>

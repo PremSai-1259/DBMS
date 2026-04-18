@@ -45,57 +45,101 @@ const upload = multer({
 class FileController {
   static async uploadFile(req, res) {
     try {
-      console.log('Upload request received:');
-      console.log('  - File:', req.file ? `${req.file.originalname} (${req.file.size} bytes)` : 'MISSING');
-      console.log('  - Body:', req.body);
-      console.log('  - Headers Content-Type:', req.headers['content-type']);
+      console.log('\n=== FILE UPLOAD REQUEST RECEIVED ===');
+      console.log('Timestamp:', new Date().toISOString());
+      console.log('Headers Content-Type:', req.headers['content-type']);
+      console.log('Headers Authorization:', req.headers.authorization ? '✅ Present' : '❌ Missing');
+      
+      console.log('\nFile Info:');
+      if (req.file) {
+        console.log('  ✅ File found');
+        console.log('    - Field name:', req.file.fieldname);
+        console.log('    - Original name:', req.file.originalname);
+        console.log('    - MIME type:', req.file.mimetype);
+        console.log('    - Size:', req.file.size, 'bytes');
+        console.log('    - Path:', req.file.path);
+      } else {
+        console.log('  ❌ NO FILE in request');
+      }
+      
+      console.log('\nBody (parsed fields):');
+      console.log('  fileType:', req.body.fileType || '❌ Missing');
+      console.log('  All body keys:', Object.keys(req.body));
+      
+      console.log('\nUser Info:');
+      console.log('  User ID:', req.user?.id || '❌ Missing (auth may have failed)');
+      console.log('  User Role:', req.user?.role || 'N/A');
+      console.log('===============================\n');
 
+      // Validation: File must exist
       if (!req.file) {
+        console.error('❌ VALIDATION FAILED: No file in request');
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const userId = req.user.id;
+      const userId = req.user?.id;
       const { fileType } = req.body;
 
-      console.log('  - UserId:', userId);
-      console.log('  - FileType:', fileType);
-
-      // Validation
-      if (!fileType || !['medical_report', 'certificate'].includes(fileType)) {
-        return res.status(400).json({ error: 'Invalid fileType. Must be medical_report or certificate' });
+      // Validation: User ID must exist
+      if (!userId) {
+        console.error('❌ VALIDATION FAILED: No userId (auth middleware issue)');
+        return res.status(401).json({ error: 'Unauthorized - no user' });
       }
 
-      // Adjust file size limit based on type
-      const fileSizeLimit = fileType === 'certificate' ? 10 * 1024 * 1024 : 5 * 1024 * 1024; // 10MB for certificate, 5MB for medical report
+      // Validation: fileType is required and valid
+      if (!fileType) {
+        console.error('❌ VALIDATION FAILED: Missing fileType in body');
+        console.error('   Available keys in req.body:', Object.keys(req.body));
+        return res.status(400).json({ error: 'fileType is required' });
+      }
+
+      if (!['medical_report', 'certificate'].includes(fileType)) {
+        console.error(`❌ VALIDATION FAILED: Invalid fileType: "${fileType}"`);
+        console.error(`   Allowed values: medical_report, certificate`);
+        return res.status(400).json({ error: 'fileType must be medical_report or certificate' });
+      }
+
+      // Validation: Check file size based on type
+      const fileSizeLimit = fileType === 'certificate' ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
       if (req.file.size > fileSizeLimit) {
-        return res.status(400).json({ error: `File size exceeds limit of ${fileSizeLimit / (1024*1024)}MB` });
+        const limitMB = fileSizeLimit / (1024*1024);
+        const sizeMB = req.file.size / (1024*1024);
+        console.error(`❌ VALIDATION FAILED: File size ${sizeMB.toFixed(2)}MB exceeds limit of ${limitMB}MB`);
+        return res.status(400).json({ error: `File must be less than ${limitMB}MB` });
+      }
+
+      // Validation: Check file mimetype
+      const allowedMimes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        console.error(`❌ VALIDATION FAILED: Invalid mimetype: "${req.file.mimetype}"`);
+        console.error(`   Allowed types: ${allowedMimes.join(', ')}`);
+        return res.status(400).json({ error: 'Only PDF, JPEG, PNG files allowed' });
       }
 
       // Read file and calculate hash
       const fileBuffer = fs.readFileSync(req.file.path);
       const hashValue = calculateFileHash(fileBuffer);
 
-      // Use original file name
-      const displayFileName = req.file.originalname;
-
       // Save to database
       const fileId = await FileModel.create(
         userId,
-        displayFileName,
+        req.file.originalname,
         req.file.path,
         fileType,
         hashValue
       );
 
+      console.log('✅ File uploaded successfully:', { fileId, fileName: req.file.originalname, fileType });
+
       res.status(201).json({
         message: 'File uploaded successfully',
         fileId,
-        fileName: displayFileName,
+        fileName: req.file.originalname,
         fileType
       });
     } catch (error) {
-      console.error('File upload error:', error);
-      res.status(500).json({ error: error.message });
+      console.error('❌ File upload error:', error);
+      res.status(500).json({ error: error.message || 'Upload failed' });
     }
   }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { profileService } from '../services/profileService'
 import useAuth from '../hooks/useAuth'
@@ -18,7 +18,41 @@ const DoctorProfileSetup = () => {
   })
   const [certificate, setCertificate] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [showApprovalPopup, setShowApprovalPopup] = useState(false)
+  const [isResubmission, setIsResubmission] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState('')
+
+  useEffect(() => {
+    checkExistingProfile()
+  }, [])
+
+  const checkExistingProfile = async () => {
+    try {
+      const res = await profileService.getApprovalStatus()
+      if (res.data?.status === 'rejected') {
+        // Pre-fill the form with existing data if available
+        if (res.data.doctorProfile) {
+          setForm({
+            specialization: res.data.doctorProfile.specialization || '',
+            experience: res.data.doctorProfile.experience || '',
+            hospitalName: res.data.doctorProfile.hospitalName || '',
+            address: res.data.doctorProfile.address || ''
+          })
+          setRejectionReason(res.data.adminMessage || '')
+        }
+        setIsResubmission(true)
+      } else if (res.data?.status === 'pending' || res.data?.status === 'approved') {
+        // Doctor already has a request in progress or approved
+        navigate('/doctor-dashboard')
+      }
+    } catch (err) {
+      // No existing profile, continue with new setup
+      console.log('No existing profile found')
+    } finally {
+      setInitialLoading(false)
+    }
+  }
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -99,15 +133,26 @@ const DoctorProfileSetup = () => {
       const fileRes = await profileService.uploadFile(formData)
       const certificateFileId = fileRes.data.fileId
 
-      // Step 2: Create doctor profile
-      await profileService.createProfile({
-        specialization: form.specialization,
-        experience: parseInt(form.experience),
-        hospitalName: form.hospitalName,
-        address: form.address
-      })
+      // Step 2: Update doctor profile if resubmitting
+      if (isResubmission) {
+        await profileService.updateProfile({
+          specialization: form.specialization,
+          experience: parseInt(form.experience),
+          hospitalName: form.hospitalName,
+          address: form.address,
+          certificateFileId
+        })
+      } else {
+        // Step 2: Create new doctor profile
+        await profileService.createProfile({
+          specialization: form.specialization,
+          experience: parseInt(form.experience),
+          hospitalName: form.hospitalName,
+          address: form.address
+        })
+      }
 
-      // Step 3: Request approval with certificate
+      // Step 3: Request approval with certificate (also handles resubmission)
       await profileService.requestDoctorApproval(certificateFileId)
 
       // Step 4: Show approval popup
@@ -120,7 +165,19 @@ const DoctorProfileSetup = () => {
 
   const handleApprovalConfirm = () => {
     setShowApprovalPopup(false)
-    navigate('/')
+    navigate('/doctor-dashboard')
+  }
+
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center"
+        style={{ background: 'linear-gradient(160deg, #f8faff 0%, #eff4fb 100%)' }}>
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin mx-auto mb-4" />
+          <p className="text-[#4a5a6a]">Loading profile...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -137,10 +194,13 @@ const DoctorProfileSetup = () => {
             <div className="text-center">
               <div className="text-5xl mb-4">✅</div>
               <h3 className="text-xl font-semibold text-[#1a2a3a] mb-2">
-                Request Sent for Approval
+                {isResubmission ? 'Resubmission Sent' : 'Request Sent for Approval'}
               </h3>
               <p className="text-sm text-[#8a9ab0] mb-6">
-                Your doctor profile and certificate have been submitted for admin review. You'll receive an email notification once your profile is approved.
+                {isResubmission 
+                  ? 'Your updated profile and certificate have been resubmitted for admin review.' 
+                  : 'Your doctor profile and certificate have been submitted for admin review.'}
+                {' '}You'll receive an email notification once your profile is reviewed.
               </p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
                 <p className="text-xs font-medium text-[#3a7bd5] mb-2">📋 What happens next:</p>
@@ -159,7 +219,7 @@ const DoctorProfileSetup = () => {
                   boxShadow: '0 4px 12px rgba(58,123,213,0.2)'
                 }}
               >
-                Got It, Go to Home
+                Got It, Go to Dashboard
               </button>
             </div>
           </div>
@@ -176,12 +236,20 @@ const DoctorProfileSetup = () => {
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-base"
                 style={{ background: 'rgba(255,255,255,0.15)' }}>👨‍⚕️</div>
               <span className="text-white text-lg font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                Complete Your Profile
+                {isResubmission ? 'Update Your Profile' : 'Complete Your Profile'}
               </span>
             </div>
             <p className="text-white/70 text-sm">
-              Add your medical credentials and upload certificate for admin verification.
+              {isResubmission 
+                ? 'Update your medical credentials and upload a new certificate for re-verification.' 
+                : 'Add your medical credentials and upload certificate for admin verification.'}
             </p>
+            {isResubmission && rejectionReason && (
+              <div className="mt-4 p-3 bg-red-500/20 border border-red-400 rounded text-sm text-red-100">
+                <p className="font-medium mb-1">Previous Feedback:</p>
+                <p>{rejectionReason}</p>
+              </div>
+            )}
           </div>
 
           {/* Form */}
@@ -262,7 +330,9 @@ const DoctorProfileSetup = () => {
 
             {/* Certificate Upload */}
             <div>
-              <label className="block text-sm font-medium text-[#4a5a6a] mb-2">Medical Certificate *</label>
+              <label className="block text-sm font-medium text-[#4a5a6a] mb-2">
+                Medical Certificate * {isResubmission && '(Required for resubmission)'}
+              </label>
               <div className="relative">
                 <input
                   type="file"
@@ -302,7 +372,9 @@ const DoctorProfileSetup = () => {
                 cursor: loading ? 'not-allowed' : 'pointer'
               }}
             >
-              {loading ? 'Submitting for Approval...' : 'Submit Profile for Approval'}
+              {loading 
+                ? (isResubmission ? 'Resubmitting...' : 'Submitting for Approval...') 
+                : (isResubmission ? 'Resubmit Profile for Approval' : 'Submit Profile for Approval')}
             </button>
 
             <p className="text-center text-xs text-[#8a9ab0]">

@@ -13,9 +13,6 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
   timeout: 10000, // 10 second timeout
 })
 
@@ -36,9 +33,14 @@ api.interceptors.request.use(
       console.warn('No authentication token found in localStorage')
     }
 
-    // For FormData, remove the default JSON Content-Type and let axios/browser set multipart/form-data with boundary
+    // For FormData, DO NOT set Content-Type header
+    // The browser will automatically set it with the correct multipart boundary
     if (config.data instanceof FormData) {
-      delete config.headers['Content-Type']
+      console.log('📤 Detected FormData - leaving Content-Type to browser for multipart boundary');
+      // Don't set Content-Type - let the browser do it
+    } else {
+      // For regular JSON requests, explicitly set Content-Type
+      config.headers['Content-Type'] = 'application/json'
     }
 
     return config
