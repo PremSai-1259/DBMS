@@ -11,8 +11,6 @@ const SignInPage = () => {
   const { login: setUser } = useAuth()
   const { toast, showToast } = useToast()
 
-  const defaultRole = location.state?.role || 'patient'
-  const [role, setRole] = useState(defaultRole)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -23,9 +21,19 @@ const SignInPage = () => {
     try {
       const { user } = await login(email, password)
       setUser(user)
-      showToast(`Welcome back, ${user.firstName}!`, 'success')
+      
+      // Extract first name from full name or use name directly
+      const displayName = user.firstName || user.name?.split(' ')[0] || user.name
+      showToast(`Welcome back, ${displayName}!`, 'success')
+      
+      // Route based on user role
+      const redirectPath = 
+        user.role === 'doctor' ? '/doctor' :
+        user.role === 'admin' ? '/admin' :
+        '/patient'
+      
       setTimeout(() => {
-        navigate(user.role === 'doctor' ? '/doctor' : '/patient')
+        navigate(redirectPath)
       }, 500)
     } catch (err) {
       showToast(err.message, 'error')
@@ -72,34 +80,31 @@ const SignInPage = () => {
             <p className="text-white/70 text-sm leading-relaxed">
               Sign in to access your personalized dashboard, manage appointments, and connect with top specialists.
             </p>
-            {/* Role pills */}
+            {/* Role pills - Display only, for UI reference */}
             <div className="flex gap-2.5 mt-8 flex-wrap">
-              {['patient', 'doctor'].map((r) => (
-                <button key={r}
-                  onClick={() => setRole(r)}
-                  className="px-4 py-2 rounded-full text-xs font-medium capitalize transition-all duration-200"
+              {['patient', 'doctor', 'admin'].map((r) => (
+                <div key={r}
+                  className="px-4 py-2 rounded-full text-xs font-medium capitalize transition-all duration-200 opacity-50 cursor-default"
                   style={{
                     border: '1.5px solid rgba(255,255,255,0.2)',
-                    color: role === r ? 'white' : 'rgba(255,255,255,0.6)',
-                    background: role === r ? 'rgba(255,255,255,0.15)' : 'transparent',
-                    borderColor: role === r ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)',
+                    color: 'rgba(255,255,255,0.6)',
+                    background: 'transparent',
                   }}>
-                  {r === 'patient' ? '👤 Patient' : '👨‍⚕️ Doctor'}
-                </button>
+                  {r === 'patient' ? '👤 Patient' : r === 'admin' ? '🔐 Admin' : '👨‍⚕️ Doctor'}
+                </div>
               ))}
             </div>
+            <p className="text-white/50 text-xs mt-3">Role determined by account type</p>
           </div>
         </div>
 
         {/* RIGHT PANEL */}
         <div className="flex-1 p-14 flex flex-col justify-center">
           <h3 className="text-[22px] font-semibold text-[#1a2a3a] mb-1.5">
-            {role === 'patient' ? 'Patient Sign In' : 'Doctor Sign In'}
+            Sign In
           </h3>
           <p className="text-sm text-[#8a9ab0] mb-8">
-            {role === 'patient'
-              ? 'Access your appointments and find care'
-              : 'Manage your practice and specialty tags'}
+            Enter your credentials to access your dashboard
           </p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -150,7 +155,7 @@ const SignInPage = () => {
               className="w-full py-3.5 rounded-xl text-[15px] font-medium text-white border-none mt-1 transition-all duration-200 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)', boxShadow: '0 6px 20px rgba(58,123,213,0.3)' }}
             >
-              {loading ? 'Signing in…' : `Sign In as ${role === 'patient' ? 'Patient' : 'Doctor'}`}
+              {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
 

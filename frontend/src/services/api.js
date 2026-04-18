@@ -36,6 +36,11 @@ api.interceptors.request.use(
       console.warn('No authentication token found in localStorage')
     }
 
+    // For FormData, remove the default JSON Content-Type and let axios/browser set multipart/form-data with boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+    }
+
     return config
   },
   (error) => {

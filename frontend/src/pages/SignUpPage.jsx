@@ -41,7 +41,13 @@ const SignUpPage = () => {
       const { user } = await signup({ ...form, role })
       setUser(user)
       showToast('Account created! Welcome to MediCore.', 'success')
-      setTimeout(() => navigate(user.role === 'doctor' ? '/doctor' : '/patient'), 600)
+      if (user.role === 'doctor') {
+        // Redirect doctors to profile setup page
+        setTimeout(() => navigate('/doctor-profile-setup'), 600)
+      } else {
+        // Redirect patients to profile setup page
+        setTimeout(() => navigate('/patient-profile-setup'), 600)
+      }
     } catch (err) {
       showToast(err.message, 'error')
     } finally {

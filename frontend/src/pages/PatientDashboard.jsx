@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import useToast from '../hooks/useToast'
 import Toast from '../components/Toast'
 import BookingModal from '../components/BookingModal'
+import FileUploadModal from '../components/FileUploadModal'
 import { getAllDoctorsWithSlots, searchDoctors } from '../services/doctorService'
 import { getAppointments, cancelAppointment } from '../services/appointmentService'
 import { profileService } from '../services/profileService'
@@ -29,6 +30,7 @@ const PatientDashboard = () => {
   const [activeFilter, setActiveFilter] = useState('All')
   const [bookingDoctor, setBookingDoctor] = useState(null)
   const [profile, setProfile] = useState(null)
+  const profileFilesListRef = useRef(null)
 
   useEffect(() => {
     loadDoctors()
@@ -307,20 +309,38 @@ const PatientDashboard = () => {
                 <h2 className="text-2xl font-semibold text-[#1a2a3a]">My Profile</h2>
                 <p className="text-sm text-[#8a9ab0] mt-1">Your account information</p>
               </div>
-              <div className="bg-white rounded-2xl p-8 max-w-lg" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
-                <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-4"
-                  style={{ background: 'linear-gradient(135deg, #e8f0fb, #e6ecf5)' }}>👤</div>
-                <h3 className="text-lg font-semibold text-[#1a2a3a] mb-1">{displayName}</h3>
-                <p className="text-sm text-[#8a9ab0] mb-6">{user?.email}</p>
-                <div className="space-y-3">
-                  {[['Role', 'Patient'], ['Email', user?.email || '—'], ['Phone', profile?.phone || user?.phone || '—']].map(([label, val]) => (
-                    <div key={label} className="flex justify-between py-2.5 border-b border-[#e6ecf5]">
-                      <span className="text-xs font-medium text-[#8a9ab0] uppercase tracking-wide">{label}</span>
-                      <span className="text-sm text-[#1a2a3a] font-medium">{val}</span>
-                    </div>
-                  ))}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                {/* Profile Details - Left */}
+                <div className="bg-white rounded-2xl p-8" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-4"
+                    style={{ background: 'linear-gradient(135deg, #e8f0fb, #e6ecf5)' }}>👤</div>
+                  <h3 className="text-lg font-semibold text-[#1a2a3a] mb-1">{displayName}</h3>
+                  <p className="text-sm text-[#8a9ab0] mb-6">{user?.email}</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {[
+                      ['Role', 'Patient'],
+                      ['Email', user?.email || '—'],
+                      ['Phone', profile?.profile?.phone || profile?.phone || '—'],
+                      ['Age', profile?.profile?.age || profile?.age ? `${profile?.profile?.age || profile?.age} years` : '—'],
+                      ['Gender', profile?.profile?.gender || profile?.gender || '—'],
+                      ['Blood Group', profile?.profile?.blood_group || profile?.bloodGroup || '—']
+                    ].map(([label, val]) => (
+                      <div key={label} className="py-3 px-3 rounded-lg" style={{ background: '#f8f9fc' }}>
+                        <span className="block text-xs font-medium text-[#8a9ab0] uppercase tracking-wide mb-1">{label}</span>
+                        <span className="text-sm text-[#1a2a3a] font-semibold">{val}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+
+                {/* File Upload - Right */}
+                <FileUploadModal 
+                  onFileUploaded={() => profileFilesListRef.current?.loadFiles()} 
+                />
               </div>
+
+              {/* Uploaded Files Section - Full Width */}
+              <ProfileFilesList ref={profileFilesListRef} profile={profile} />
             </div>
           )}
         </main>
@@ -423,3 +443,115 @@ const AppointmentCard = ({ apt, onCancel, past }) => {
 }
 
 export default PatientDashboard
+
+const ProfileFilesList = forwardRef(({ profile }, ref) => {
+  const [uploadedFiles, setUploadedFiles] = useState([])
+  const [loading, setLoading] = useState(false)
+  const { showToast } = useToast()
+
+  useEffect(() => {
+    loadFiles()
+  }, [])
+
+  const loadFiles = async () => {
+    setLoading(true)
+    try {
+      console.log('[ProfileFilesList] Starting to load files...')
+      const res = await profileService.getUploadedFiles()
+      console.log('[ProfileFilesList] API Response:', res)
+      console.log('[ProfileFilesList] Response data:', res.data)
+      console.log('[ProfileFilesList] Response files:', res.data?.files)
+      
+      const filesArray = res.data?.files || []
+      console.log('[ProfileFilesList] Files array to display:', filesArray)
+      
+      setUploadedFiles(filesArray)
+      console.log('[ProfileFilesList] State updated with files')
+    } catch (err) {
+      console.error('[ProfileFilesList] Error loading files:', err)
+      console.error('[ProfileFilesList] Error response:', err.response?.data)
+      console.error('[ProfileFilesList] Error message:', err.message)
+      showToast(err.response?.data?.error || 'Failed to load files', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Expose loadFiles method to parent via ref
+  useImperativeHandle(ref, () => ({
+    loadFiles
+  }))
+
+  const handleDeleteFile = async (fileId) => {
+    if (!window.confirm('Are you sure you want to delete this file?')) return
+
+    try {
+      await profileService.deleteFile(fileId)
+      showToast('File deleted successfully', 'success')
+      loadFiles()
+    } catch (err) {
+      showToast(err.message || 'Failed to delete file', 'error')
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-8" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-[#1a2a3a] flex items-center gap-2">
+          📋 Your Medical Files
+          {uploadedFiles.length > 0 && (
+            <span className="ml-auto text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#e8f0fb', color: '#3a7bd5' }}>
+              {uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </h3>
+        <p className="text-sm text-[#8a9ab0] mt-1">All your uploaded medical documents</p>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin" />
+        </div>
+      ) : uploadedFiles.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="text-4xl mb-3">📁</div>
+          <p className="text-[#8a9ab0] font-medium">No files uploaded yet</p>
+          <p className="text-sm text-[#8a9ab0] mt-1">Upload your medical documents using the form above</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {uploadedFiles.map(file => (
+            <div key={file.id} className="p-4 rounded-xl border border-[#e6ecf5] hover:border-[#3a7bd5] hover:bg-[#f8f9fc] transition-all duration-200"
+              style={{ background: '#f8f9fc' }}>
+              <div className="flex items-start gap-3">
+                <div className="text-2xl flex-shrink-0">📋</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[#1a2a3a] truncate" title={file.file_name}>
+                    {file.file_name}
+                  </p>
+                  <p className="text-xs text-[#8a9ab0] mt-1">
+                    {new Date(file.uploaded_at).toLocaleDateString('en-IN', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
+                  </p>
+                  <p className="text-xs text-[#3a7bd5] font-medium mt-1">Medical Report</p>
+                </div>
+                <button
+                  onClick={() => handleDeleteFile(file.id)}
+                  className="text-[#8a9ab0] hover:text-red-500 transition-colors flex-shrink-0 p-1"
+                  title="Delete file"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+})
+
+ProfileFilesList.displayName = 'ProfileFilesList'

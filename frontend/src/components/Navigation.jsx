@@ -28,12 +28,21 @@ export default function Navigation() {
         <Link to="/" className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${isActive('/') ? 'bg-accent-light text-accent' : 'text-text-mid hover:text-accent'}`}>
           Home
         </Link>
-        <Link to="/patient" className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${isActive('/patient') ? 'bg-accent-light text-accent' : 'text-text-mid hover:text-accent'}`}>
-          Patient Portal
-        </Link>
-        <Link to="/doctor" className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${isActive('/doctor') ? 'bg-accent-light text-accent' : 'text-text-mid hover:text-accent'}`}>
-          Doctor Portal
-        </Link>
+        {user?.role === 'patient' && (
+          <Link to="/patient" className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${isActive('/patient') ? 'bg-accent-light text-accent' : 'text-text-mid hover:text-accent'}`}>
+            Patient Portal
+          </Link>
+        )}
+        {user?.role === 'doctor' && (
+          <Link to="/doctor" className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${isActive('/doctor') ? 'bg-accent-light text-accent' : 'text-text-mid hover:text-accent'}`}>
+            Doctor Portal
+          </Link>
+        )}
+        {user?.role === 'admin' && (
+          <Link to="/admin" className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${isActive('/admin') ? 'bg-accent-light text-accent' : 'text-text-mid hover:text-accent'}`}>
+            Admin Dashboard
+          </Link>
+        )}
       </div>
 
       {/* Actions */}

@@ -51,9 +51,38 @@ class DoctorApprovalController {
       // Admin only - checked by roleMiddleware
       const pending = await DoctorApprovalModel.findPendingApprovals();
 
+      // Enrich with user and doctor profile data
+      const enrichedPending = await Promise.all(pending.map(async (approval) => {
+        try {
+          const user = await UserModel.findById(approval.doctor_id);
+          const doctorProfile = await DoctorProfileModel.findByUserId(approval.doctor_id);
+          
+          return {
+            approvalId: approval.id,
+            status: approval.status,
+            createdAt: approval.created_at,
+            reviewedAt: approval.reviewed_at,
+            certificateFileId: approval.certificate_file_id,
+            doctor: {
+              id: approval.doctor_id,
+              name: user?.name || 'Unknown',
+              email: user?.email || 'Unknown',
+              specialization: doctorProfile?.specialization || 'N/A',
+              experience: doctorProfile?.experience || 0,
+              hospitalName: doctorProfile?.hospital_name || 'N/A',
+              address: doctorProfile?.address || 'N/A',
+              verified: doctorProfile?.verified || false
+            }
+          }
+        } catch (error) {
+          console.error('Error enriching approval data:', error);
+          return approval;
+        }
+      }));
+
       res.json({
-        pending,
-        count: pending.length
+        pending: enrichedPending,
+        count: enrichedPending.length
       });
     } catch (error) {
       console.error('Get pending doctors error:', error);
