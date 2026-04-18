@@ -27,16 +27,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
-app.use('/auth', authRoutes);
-app.use('/profile', profileRoutes);
-app.use('/doctor', doctorRoutes);
-app.use('/slots', slotRoutes);
-app.use('/appointments', appointmentRoutes);
-app.use('/files', fileRoutes);
-app.use('/access', accessRoutes);
-app.use('/consultation', consultationRoutes);
-app.use('/reviews', reviewRoutes);
-app.use('/notifications', notificationRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/doctor', doctorRoutes);
+app.use('/api/slots', slotRoutes);
+app.use('/api/appointments', appointmentRoutes);
+app.use('/api/files', fileRoutes);
+app.use('/api/access', accessRoutes);
+app.use('/api/consultation', consultationRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

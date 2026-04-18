@@ -71,12 +71,18 @@ class SlotController {
     try {
       const { doctorId, slotDate } = req.query;
 
-      // Validation
+      // If no parameters, return all available slots with doctor info
+      if (!doctorId && !slotDate) {
+        const slots = await AppointmentSlotModel.getAllAvailableSlotsWithDoctors();
+        return res.json(slots);
+      }
+
+      // If parameters provided, validate both are present
       if (!doctorId || !slotDate) {
         return res.status(400).json({ error: 'doctorId and slotDate required' });
       }
 
-      // Get available slots
+      // Get available slots for specific doctor and date
       const slots = await AppointmentSlotModel.getAvailableSlots(doctorId, slotDate);
 
       res.json({

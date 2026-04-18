@@ -65,6 +65,27 @@ class AppointmentSlotModel {
     const [rows] = await db.execute(query, [doctorId, slotDate]);
     return rows;
   }
+
+  static async getAllAvailableSlotsWithDoctors() {
+    const query = `
+      SELECT 
+        ast.id as slotId,
+        ast.slot_date as date,
+        ast.slot_number as time,
+        ast.is_active as status,
+        dp.user_id as doctorId,
+        u.name as doctorName,
+        dp.specialization,
+        dp.hospital_name as hospitalName
+      FROM appointment_slots ast
+      JOIN doctor_profiles dp ON ast.doctor_id = dp.user_id
+      JOIN users u ON dp.user_id = u.id
+      WHERE ast.is_active = 1 AND ast.is_booked = 0
+      ORDER BY u.name ASC, ast.slot_date ASC, ast.slot_number ASC
+    `;
+    const [rows] = await db.execute(query);
+    return rows;
+  }
 }
 
 module.exports = AppointmentSlotModel;

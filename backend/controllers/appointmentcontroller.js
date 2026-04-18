@@ -138,7 +138,9 @@ class AppointmentController {
       const userId = req.user.id;
       const userRole = req.user.role;
 
-      let appointments;
+      console.log(`Fetching appointments for userId: ${userId}, role: ${userRole}`);
+
+      let appointments = [];
 
       if (userRole === 'patient') {
         appointments = await AppointmentModel.findByPatientId(userId);
@@ -147,6 +149,8 @@ class AppointmentController {
       } else {
         return res.status(403).json({ error: 'Invalid role' });
       }
+
+      console.log(`Found ${appointments.length} appointments for user ${userId}`);
 
       res.json({
         total: appointments.length,

@@ -6,11 +6,11 @@ const { hashPassword, comparePassword, generateToken } = require('../utils/helpe
 class AuthController {
   static async signup(req, res) {
     try {
-      const { name, email, password, role } = req.body;
+      const { firstName, lastName, email, password, role } = req.body;
 
       // Validation
-      if (!name || !email || !password || !role) {
-        return res.status(400).json({ error: 'Missing required fields: name, email, password, role' });
+      if (!firstName || !lastName || !email || !password || !role) {
+        return res.status(400).json({ error: 'Missing required fields: firstName, lastName, email, password, role' });
       }
 
       if (!['patient', 'doctor'].includes(role)) {
@@ -26,6 +26,9 @@ class AuthController {
       // Hash password
       const hashedPassword = await hashPassword(password);
 
+      // Combine firstName and lastName into name
+      const name = `${firstName} ${lastName}`;
+
       // Create user
       const userId = await UserModel.create(name, email, hashedPassword, role);
 
@@ -37,7 +40,7 @@ class AuthController {
         message: 'Signup successful',
         userId,
         token,
-        user: { id: userId, name, email, role }
+        user: { id: userId, name, firstName, lastName, email, role }
       });
     } catch (error) {
       console.error('Signup error:', error);
