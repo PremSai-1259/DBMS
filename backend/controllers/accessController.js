@@ -76,6 +76,7 @@ class AccessController {
 
       const mappedRequests = requests.map(r => ({
         id: r.id,
+        fileId: r.file_id,
         doctorId: r.doctor_id,
         doctorName: r.doctor_name,
         patientId: r.patient_id,
