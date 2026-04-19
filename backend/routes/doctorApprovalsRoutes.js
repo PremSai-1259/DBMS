@@ -22,6 +22,10 @@ router.post('/request', authMiddleware, roleMiddleware(['doctor']),
 router.get('/pending', authMiddleware, roleMiddleware(['admin']), 
   DoctorApprovalController.getPendingDoctors);
 
+// GET /doctor-approvals/doctor/:doctorId/details - Admin gets full doctor details for review
+router.get('/doctor/:doctorId/details', authMiddleware, roleMiddleware(['admin']), 
+  DoctorApprovalController.getDoctorApprovalDetails);
+
 // PUT /doctor-approvals/:approvalId/approve - Admin approves doctor
 router.put('/:approvalId/approve', authMiddleware, roleMiddleware(['admin']), 
   DoctorApprovalController.approveDoctorRequest);

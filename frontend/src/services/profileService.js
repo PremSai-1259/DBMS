@@ -38,6 +38,10 @@ export const profileService = {
   getPendingDoctorApprovals: () =>
     api.get('/doctor-approvals/pending'),
 
+  // Admin: Get doctor details and uploaded files (NEW)
+  getDoctorApprovalDetails: (doctorId) =>
+    api.get(`/doctor-approvals/doctor/${doctorId}/details`),
+
   // Admin: Approve doctor request
   approveDoctorRequest: (approvalId) =>
     api.put(`/doctor-approvals/${approvalId}/approve`),
@@ -49,4 +53,29 @@ export const profileService = {
   // Get file info
   getFileInfo: (fileId) =>
     api.get(`/files/${fileId}/info`),
+
+  // Download file with auth headers
+  downloadFile: async (fileId, fileName) => {
+    try {
+      const response = await api.get(`/files/${fileId}`, {
+        responseType: 'blob',
+        timeout: 30000 // 30 second timeout for downloads
+      })
+      
+      // Create blob and download
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', fileName || `file-${fileId}`)
+      document.body.appendChild(link)
+      link.click()
+      link.parentNode.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Download error:', error)
+      throw error
+    }
+  },
 }

@@ -149,30 +149,47 @@ class FileController {
       const userId = req.user.id;
       const userRole = req.user.role;
 
+      console.log(`[getFile] Attempting to download file ${fileId}, User: ${userId}, Role: ${userRole}`);
+
       // Get file info
       const file = await FileModel.findById(fileId);
       if (!file) {
+        console.log(`[getFile] File ${fileId} not found`);
         return res.status(404).json({ error: 'File not found' });
       }
 
-      // Authorization: User can only download their own files or approved medical records
-      if (file.user_id !== userId && userRole !== 'admin') {
-        // Check if doctor has approved access
-        if (userRole === 'doctor') {
-          const RecordAccessModel = require('../models/RecordAccess');
-          const access = await RecordAccessModel.checkApprovedAccess(userId, fileId);
-          if (!access) {
-            return res.status(403).json({ error: 'Access denied to this file' });
-          }
-        } else {
+      // Authorization logic:
+      // 1. Admin can download ANY file (for approval process)
+      // 2. User can download their own files
+      // 3. Doctor can download approved patient records
+      
+      if (userRole === 'admin') {
+        // ✅ Admin can access any file
+        console.log(`[getFile] Admin access granted to file ${fileId}`);
+      } else if (file.user_id === userId) {
+        // ✅ User can access their own files
+        console.log(`[getFile] Owner access granted to file ${fileId}`);
+      } else if (userRole === 'doctor') {
+        // Check if doctor has approved access to patient records
+        const RecordAccessModel = require('../models/RecordAccess');
+        const access = await RecordAccessModel.checkApprovedAccess(userId, fileId);
+        if (!access) {
+          console.log(`[getFile] Doctor access denied to file ${fileId}`);
           return res.status(403).json({ error: 'Access denied to this file' });
         }
+        console.log(`[getFile] Doctor approved access granted to file ${fileId}`);
+      } else {
+        console.log(`[getFile] Access denied for role ${userRole} to file ${fileId}`);
+        return res.status(403).json({ error: 'Access denied to this file' });
       }
 
       // Check if file exists on disk
       if (!fs.existsSync(file.file_path)) {
+        console.error(`[getFile] File not found on disk: ${file.file_path}`);
         return res.status(404).json({ error: 'File not found on server' });
       }
+
+      console.log(`[getFile] Downloading file: ${file.file_name} from ${file.file_path}`);
 
       // Send file
       res.download(file.file_path, file.file_name);

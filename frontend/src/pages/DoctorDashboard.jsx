@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import useToast from '../hooks/useToast'
 import Toast from '../components/Toast'
+import ScheduleManager from '../components/ScheduleManager'
 import { getAppointments } from '../services/appointmentService'
 import { profileService } from '../services/profileService'
 import { slotService } from '../services/slotService'
@@ -42,6 +43,10 @@ const DoctorDashboard = () => {
   const [selectedTags, setSelectedTags] = useState([])
   const [tagSubmitted, setTagSubmitted] = useState(false)
   const [activeDayIdx, setActiveDayIdx] = useState(0)
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState(() => {
+    const today = new Date()
+    return today.toISOString().split('T')[0]
+  })
 
   // Load approval status on mount
   useEffect(() => {
@@ -496,30 +501,35 @@ const DoctorDashboard = () => {
             <div>
               <div className="mb-7">
                 <h2 className="text-2xl font-semibold text-[#1a2a3a]">Manage Schedule</h2>
-                <p className="text-sm text-[#8a9ab0] mt-1">View and manage your appointment slots</p>
+                <p className="text-sm text-[#8a9ab0] mt-1">Set your availability across 24 daily slots (8 AM - 9 PM with lunch break)</p>
               </div>
 
-              {/* Weekly overview */}
-              <div className="bg-white rounded-2xl p-6 mb-5"
+              {/* Date picker - Weekly view */}
+              <div className="bg-white rounded-2xl p-6 mb-6"
                 style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
-                <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4">Weekly Overview</h3>
+                <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4">Select Date</h3>
                 <div className="grid grid-cols-7 gap-2">
-                  {DAYS.map((day, idx) => {
-                    const isActive = idx === activeDayIdx
-                    const isOff = idx >= 5
+                  {Array.from({ length: 7 }, (_, i) => {
+                    const date = new Date()
+                    date.setDate(date.getDate() + i)
+                    const dateStr = date.toISOString().split('T')[0]
+                    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
+                    const dayNum = date.getDate()
+                    const isSelected = dateStr === selectedScheduleDate
+
                     return (
-                      <button key={day}
-                        onClick={() => setActiveDayIdx(idx)}
+                      <button
+                        key={dateStr}
+                        onClick={() => setSelectedScheduleDate(dateStr)}
                         className="flex flex-col items-center py-3 px-2 rounded-xl transition-all duration-200"
-                        style={isActive
-                          ? { background: '#e8f0fb', color: '#3a7bd5' }
-                          : isOff
-                          ? { background: '#e6ecf5', color: '#8a9ab0' }
-                          : { background: '#f8f9fc', color: '#1a2a3a' }}>
-                        <div className="text-[11px] font-semibold mb-1">{day.toUpperCase()}</div>
-                        <div className="text-xl font-bold">{13 + idx}</div>
-                        <div className="text-[11px] mt-1" style={{ color: '#8a9ab0' }}>
-                          {isOff ? 'Off' : `${Math.floor(Math.random() * 8) + 5} pts`}
+                        style={isSelected
+                          ? { background: '#e8f0fb', border: '2px solid #3a7bd5' }
+                          : { background: '#f8f9fc', border: '1px solid #e6ecf5' }}>
+                        <div className="text-[11px] font-semibold mb-1" style={{ color: isSelected ? '#3a7bd5' : '#4a5a6a' }}>
+                          {dayName.toUpperCase()}
+                        </div>
+                        <div className="text-lg font-bold" style={{ color: isSelected ? '#3a7bd5' : '#1a2a3a' }}>
+                          {dayNum}
                         </div>
                       </button>
                     )
@@ -527,33 +537,10 @@ const DoctorDashboard = () => {
                 </div>
               </div>
 
-              {/* Slots for selected day */}
+              {/* Schedule Manager Component */}
               <div className="bg-white rounded-2xl p-6"
                 style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
-                <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4">{DAYS[activeDayIdx]} Schedule</h3>
-                {slots.length === 0 ? (
-                  <div className="text-center py-8 text-[#8a9ab0]">
-                    <div className="text-3xl mb-2">📋</div>
-                    <p className="text-sm">No slots configured for this day</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {slots.slice(0, 6).map((slot, i) => (
-                      <div key={slot.slotId || i}
-                        className="flex items-center gap-4 py-3 px-4 rounded-xl"
-                        style={{ background: '#f8f9fc', border: '1px solid #e6ecf5' }}>
-                        <div className="text-sm font-semibold text-[#6b8cba] w-20">{slot.time || '—'}</div>
-                        <div className="flex-1 text-sm text-[#1a2a3a]">{slot.patientName || 'Available'}</div>
-                        <span className="text-xs font-medium px-2.5 py-1 rounded-full"
-                          style={slot.status === 'booked'
-                            ? { background: '#fef0f0', color: '#e53e3e' }
-                            : { background: '#e6f9f2', color: '#1a9e6a' }}>
-                          {slot.status === 'booked' ? 'Booked' : 'Available'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <ScheduleManager selectedDate={selectedScheduleDate} />
               </div>
             </div>
           )}

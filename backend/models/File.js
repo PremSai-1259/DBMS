@@ -23,6 +23,12 @@ class FileModel {
     return rows;
   }
 
+  static async findAllByUserId(userId) {
+    const query = 'SELECT * FROM files WHERE user_id = ? ORDER BY uploaded_at DESC';
+    const [rows] = await db.execute(query, [userId]);
+    return rows;
+  }
+
   static async findMedicalReportsByPatientId(patientId) {
     const query = `
       SELECT * FROM files 

@@ -37,10 +37,10 @@ CREATE TABLE doctor_profiles (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNIQUE,
 
-    specialization VARCHAR(100),
-    experience INT,
-    hospital_name VARCHAR(100),
-    address TEXT,
+    specialization VARCHAR(100) NOT NULL,
+    experience INT NOT NULL,
+    hospital_name VARCHAR(150) NOT NULL,
+    address VARCHAR(255) NOT NULL,
 
     is_verified BOOLEAN DEFAULT FALSE,
     average_rating FLOAT DEFAULT 0,
@@ -50,7 +50,13 @@ CREATE TABLE doctor_profiles (
 
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (profile_image_id) REFERENCES files(id) ON DELETE SET NULL,
-    FOREIGN KEY (certificate_file_id) REFERENCES files(id) ON DELETE SET NULL
+    FOREIGN KEY (certificate_file_id) REFERENCES files(id) ON DELETE SET NULL,
+    
+    -- ✅ CONSTRAINTS: Prevent invalid data
+    CHECK (experience >= 0 AND experience <= 70),
+    CHECK (LENGTH(specialization) >= 3),
+    CHECK (LENGTH(hospital_name) >= 2),
+    CHECK (LENGTH(address) >= 10)
 );
 
 -- ==============================
@@ -74,6 +80,9 @@ CREATE TABLE patient_profiles (
 -- ==============================
 -- DOCTOR APPROVALS
 -- ==============================
+-- Note: doctor_id has a NON-UNIQUE index (allows multiple approval records per doctor)
+-- This enables doctors to resubmit after rejection
+-- hasPendingApproval() check ensures only 1 pending request at a time
 CREATE TABLE doctor_approvals (
     id INT AUTO_INCREMENT PRIMARY KEY,
     doctor_id INT,
@@ -86,9 +95,51 @@ CREATE TABLE doctor_approvals (
 
     INDEX idx_doctor_status (doctor_id, status),
     INDEX idx_status (status),
+    INDEX idx_doctor_id (doctor_id),
 
     FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (certificate_file_id) REFERENCES files(id) ON DELETE CASCADE
+);
+
+-- ==============================
+-- DOCTOR SCHEDULES (24 SLOTS PER DAY)
+-- ==============================
+-- Stores doctor's availability for specific dates
+-- 24 slots: 8:00 AM - 9:00 PM (30 min each), break 12:00 PM - 1:00 PM (slots 9-10 skipped)
+-- Slot mapping: 1-8 (8am-12pm), 11-24 (1pm-9pm)
+CREATE TABLE doctor_schedules (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    doctor_id INT NOT NULL,
+    schedule_date DATE NOT NULL,
+
+    slot_1 BOOLEAN DEFAULT FALSE,
+    slot_2 BOOLEAN DEFAULT FALSE,
+    slot_3 BOOLEAN DEFAULT FALSE,
+    slot_4 BOOLEAN DEFAULT FALSE,
+    slot_5 BOOLEAN DEFAULT FALSE,
+    slot_6 BOOLEAN DEFAULT FALSE,
+    slot_7 BOOLEAN DEFAULT FALSE,
+    slot_8 BOOLEAN DEFAULT FALSE,
+    slot_11 BOOLEAN DEFAULT FALSE,
+    slot_12 BOOLEAN DEFAULT FALSE,
+    slot_13 BOOLEAN DEFAULT FALSE,
+    slot_14 BOOLEAN DEFAULT FALSE,
+    slot_15 BOOLEAN DEFAULT FALSE,
+    slot_16 BOOLEAN DEFAULT FALSE,
+    slot_17 BOOLEAN DEFAULT FALSE,
+    slot_18 BOOLEAN DEFAULT FALSE,
+    slot_19 BOOLEAN DEFAULT FALSE,
+    slot_20 BOOLEAN DEFAULT FALSE,
+    slot_21 BOOLEAN DEFAULT FALSE,
+    slot_22 BOOLEAN DEFAULT FALSE,
+    slot_23 BOOLEAN DEFAULT FALSE,
+    slot_24 BOOLEAN DEFAULT FALSE,
+
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE (doctor_id, schedule_date),
+    FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_doctor_date (doctor_id, schedule_date)
 );
 
 -- ==============================
@@ -101,10 +152,14 @@ CREATE TABLE appointment_slots (
 
     slot_number INT CHECK (slot_number BETWEEN 1 AND 24),
 
-    is_active BOOLEAN DEFAULT TRUE,
+    is_available BOOLEAN DEFAULT FALSE,
     is_booked BOOLEAN DEFAULT FALSE,
 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
     UNIQUE (doctor_id, slot_date, slot_number),
+    INDEX idx_doctor_date (doctor_id, slot_date),
 
     FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE
 );

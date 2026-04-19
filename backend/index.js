@@ -9,6 +9,7 @@ const profileRoutes = require('./routes/profileroutes');
 const doctorRoutes = require('./routes/doctorRoutes');
 const doctorApprovalsRoutes = require('./routes/doctorApprovalsRoutes');
 const slotRoutes = require('./routes/slotRoutes');
+const scheduleRoutes = require('./routes/scheduleRoutes');
 const appointmentRoutes = require('./routes/appointmentroutes');
 const fileRoutes = require('./routes/fileRoutes');
 const accessRoutes = require('./routes/accessRoutes');
@@ -18,6 +19,12 @@ const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Global request logger - logs ALL incoming requests
+app.use((req, res, next) => {
+  console.log(`🔷 [${new Date().toISOString()}] ${req.method} ${req.path} ${req.query ? '?' + new URLSearchParams(req.query).toString() : ''}`);
+  next();
+});
 
 // Middleware
 app.use(cors());
@@ -33,6 +40,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/doctor', doctorRoutes);
 app.use('/api/doctor-approvals', doctorApprovalsRoutes);
 app.use('/api/slots', slotRoutes);
+app.use('/api/schedule', scheduleRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/access', accessRoutes);
