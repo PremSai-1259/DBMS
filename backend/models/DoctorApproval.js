@@ -219,6 +219,25 @@ class DoctorApprovalModel {
     const [rows] = await db.execute(query);
     return rows[0]?.count || 0;
   }
+
+  // Get status counts for dashboard summary cards
+  static async getStatusCounts() {
+    const query = `
+      SELECT status, COUNT(*) as count
+      FROM doctor_approvals
+      GROUP BY status
+    `;
+    const [rows] = await db.execute(query);
+
+    return rows.reduce((acc, row) => {
+      acc[row.status] = Number(row.count) || 0;
+      return acc;
+    }, {
+      pending: 0,
+      approved: 0,
+      rejected: 0
+    });
+  }
 }
 
 module.exports = DoctorApprovalModel;

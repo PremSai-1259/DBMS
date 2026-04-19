@@ -256,10 +256,13 @@ class DoctorApprovalController {
         }
       });
 
+      const summary = await DoctorApprovalModel.getStatusCounts();
+
       console.log('[getPendingDoctors] ✅ Returning', enrichedPending.length, 'enriched records');
       res.json({
         pending: enrichedPending,
         count: enrichedPending.length,
+        summary,
         timestamp: new Date().toISOString()
       });
     } catch (error) {
@@ -268,6 +271,25 @@ class DoctorApprovalController {
       res.status(500).json({ 
         error: 'Failed to fetch pending doctor approvals',
         code: 'GET_PENDING_FAILED',
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  }
+
+  // Admin gets overall approval status counts for dashboard cards
+  static async getApprovalSummary(req, res) {
+    try {
+      const summary = await DoctorApprovalModel.getStatusCounts();
+      res.json({
+        summary,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[getApprovalSummary] ❌ UNHANDLED ERROR:', error.message);
+      res.status(500).json({
+        error: 'Failed to fetch approval summary',
+        code: 'GET_SUMMARY_FAILED',
         message: error.message,
         details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });

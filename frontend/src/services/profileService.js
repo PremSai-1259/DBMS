@@ -38,6 +38,10 @@ export const profileService = {
   getPendingDoctorApprovals: () =>
     api.get('/doctor-approvals/pending'),
 
+  // Admin: Get dashboard summary counts
+  getDoctorApprovalSummary: () =>
+    api.get('/doctor-approvals/summary'),
+
   // Admin: Get doctor details and uploaded files (NEW)
   getDoctorApprovalDetails: (doctorId) =>
     api.get(`/doctor-approvals/doctor/${doctorId}/details`),
