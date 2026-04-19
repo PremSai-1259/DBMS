@@ -74,21 +74,25 @@ class AccessController {
       console.log(`[ACCESS-CONTROLLER] Found ${requests.length} requests`);
       console.log(`[ACCESS-CONTROLLER] Raw requests:`, requests);
 
-      const mappedRequests = requests.map(r => ({
-        id: r.id,
-        fileId: r.file_id,
-        doctorId: r.doctor_id,
-        doctorName: r.doctor_name,
-        patientId: r.patient_id,
-        patientName: r.patient_name,
-        fileName: r.file_name,
-        status: r.status,
-        requestedAt: r.requested_at,
-        updatedAt: r.updated_at,
-        expiresAt: r.expires_at
-      }));
+      const mappedRequests = requests.map(r => {
+        const mapped = {
+          id: r.id,
+          fileId: r.fileId || r.file_id,
+          doctorId: r.doctor_id,
+          doctorName: r.doctor_name,
+          patientId: r.patient_id,
+          patientName: r.patient_name,
+          fileName: r.file_name,
+          status: r.status,
+          requestedAt: r.requested_at,
+          updatedAt: r.updated_at,
+          expiresAt: r.expires_at
+        };
+        console.log(`[ACCESS-CONTROLLER] Mapping record ${r.id}: file_id=${r.file_id} -> mapped.fileId=${mapped.fileId}`);
+        return mapped;
+      });
 
-      console.log(`[ACCESS-CONTROLLER] Mapped requests:`, mappedRequests);
+      console.log(`[ACCESS-CONTROLLER] Mapped requests (FINAL):`, JSON.stringify(mappedRequests, null, 2));
 
       res.json({
         total: mappedRequests.length,

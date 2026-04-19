@@ -7,13 +7,25 @@ const DoctorAccessReports = () => {
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [downloadingId, setDownloadingId] = useState(null)
   const [selectedPatientId, setSelectedPatientId] = useState(null)
+  const [viewingFile, setViewingFile] = useState(null)
+  const [viewingFileUrl, setViewingFileUrl] = useState(null)
+  const [viewingFileType, setViewingFileType] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
   const { showToast } = useToast()
 
   useEffect(() => {
     loadGrantedFiles()
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (viewingFileUrl) {
+        window.URL.revokeObjectURL(viewingFileUrl)
+      }
+    }
+  }, [viewingFileUrl])
 
   const loadGrantedFiles = async () => {
     setLoading(true)
@@ -21,9 +33,22 @@ const DoctorAccessReports = () => {
       // Get all access requests
       const res = await profileService.getMedicalRequests()
       const allRequests = res.data.requests || []
+      
+      console.log('=== DOCTOR ACCESS REPORTS API RESPONSE ===')
+      console.log('Full response:', res.data)
+      console.log('All requests:', allRequests)
+      if (allRequests.length > 0) {
+        console.log('First request full object:', JSON.stringify(allRequests[0], null, 2))
+        console.log('First request keys:', Object.keys(allRequests[0]))
+      }
 
       // Filter for approved requests only
       const approvedFiles = allRequests.filter(r => r.status === 'approved')
+      console.log('Approved files count:', approvedFiles.length)
+      if (approvedFiles.length > 0) {
+        console.log('First approved file:', JSON.stringify(approvedFiles[0], null, 2))
+      }
+      
       setFiles(approvedFiles)
     } catch (error) {
       console.error('Error loading granted files:', error)
@@ -34,11 +59,71 @@ const DoctorAccessReports = () => {
   }
 
   const getFileId = (file) => {
-    // Handle both camelCase and snake_case field names
-    const fileId = file.fileId || file.file_id
+    const fileId = file.fileId || file.file_id || file.id
     console.log('DEBUG: File object keys:', Object.keys(file))
     console.log('DEBUG: file.fileId=', file.fileId, 'file.id=', file.id, 'returning=', fileId)
     return fileId
+  }
+
+  const resolveFileId = async (file) => {
+    const directFileId = file.fileId || file.file_id
+    if (directFileId) return directFileId
+
+    if (file.patientId && file.fileName) {
+      try {
+        const summaryRes = await profileService.getDoctorPatientSummary(file.patientId)
+        const matchedDocument = (summaryRes.data?.documents || []).find((document) =>
+          document.fileName === file.fileName && document.accessStatus === 'approved'
+        )
+
+        if (matchedDocument?.id) {
+          return matchedDocument.id
+        }
+      } catch (error) {
+        console.error('Failed to resolve fileId from patient summary:', error)
+      }
+    }
+
+    return file.id || null
+  }
+
+  const closePreview = () => {
+    if (viewingFileUrl) {
+      window.URL.revokeObjectURL(viewingFileUrl)
+    }
+    setViewingFileUrl(null)
+    setViewingFileType('')
+    setPreviewError('')
+    setViewingFile(null)
+  }
+
+  const handleViewFile = async (file) => {
+    console.log('=== HANDLE VIEW FILE CALLED ===')
+    console.log('File object:', file)
+    const fileId = await resolveFileId(file)
+    console.log('Extracted fileId:', fileId)
+
+    if (!fileId) {
+      console.error('❌ No fileId found')
+      showToast('File ID is missing for this report', 'error')
+      return
+    }
+
+    setViewingFile(file)
+    setPreviewLoading(true)
+    setPreviewError('')
+
+    try {
+      const preview = await profileService.previewFile(fileId)
+      setViewingFileUrl(preview.url)
+      setViewingFileType(preview.contentType || '')
+    } catch (error) {
+      console.error('Preview error:', error)
+      setViewingFile(null)
+      showToast(error.response?.data?.error || 'Failed to preview file', 'error')
+    } finally {
+      setPreviewLoading(false)
+    }
   }
 
   const formatDate = (dateStr) => {
@@ -51,22 +136,14 @@ const DoctorAccessReports = () => {
     })
   }
 
-  const handleDownloadFile = async (fileId, fileName) => {
-    if (!fileId) {
-      showToast('File ID is missing', 'error')
-      return
+  const getPreviewSrc = () => {
+    if (!viewingFileUrl) return ''
+
+    if (viewingFileType === 'application/pdf') {
+      return `${viewingFileUrl}#toolbar=0&navpanes=0&scrollbar=0`
     }
-    
-    setDownloadingId(fileId)
-    try {
-      await profileService.downloadFile(fileId, fileName)
-      showToast(`Downloaded ${fileName}`, 'success')
-    } catch (error) {
-      console.error('Download error:', error)
-      showToast(error.response?.data?.error || 'Failed to download file', 'error')
-    } finally {
-      setDownloadingId(null)
-    }
+
+    return viewingFileUrl
   }
 
 
@@ -190,12 +267,12 @@ const DoctorAccessReports = () => {
                     👤 Patient Profile
                   </button>
                   <button
-                    onClick={() => handleDownloadFile(getFileId(file), file.fileName)}
-                    disabled={downloadingId === getFileId(file)}
-                    className="px-3 py-2 rounded-lg text-xs font-medium text-white transition-all flex-shrink-0 hover:-translate-y-px disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}
+                    onClick={() => handleViewFile(file)}
+                    disabled={!getFileId(file)}
+                    className="px-3 py-2 rounded-lg text-xs font-medium text-[#d69e2e] transition-all flex-shrink-0 hover:-translate-y-px"
+                    style={{ background: '#fff5e6', border: '1px solid #fbd38d' }}
                   >
-                    {downloadingId === getFileId(file) ? '⏳' : '⬇️'} Download
+                    👁️ View
                   </button>
                 </div>
               </div>
@@ -210,6 +287,96 @@ const DoctorAccessReports = () => {
           patientId={selectedPatientId}
           onClose={() => setSelectedPatientId(null)}
         />
+      )}
+
+      {/* File Viewer Modal */}
+      {viewingFile && (
+        <>
+          {console.log('🎬 File viewer rendering for:', viewingFile.fileName)}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={closePreview}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[72vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-[#e6ecf5]">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#1a2a3a]">
+                    📄 {viewingFile.fileName}
+                  </h3>
+                  <p className="text-sm text-[#8a9ab0] mt-1">
+                    From: <span className="font-medium">{viewingFile.patientName}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={closePreview}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#f0f2f5] transition-all"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Preview area */}
+              <div className="flex-1 overflow-hidden bg-gray-100">
+                {previewLoading ? (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-10 h-10 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin mx-auto mb-3" />
+                      <p className="text-sm text-[#4a5a6a]">Loading preview...</p>
+                    </div>
+                  </div>
+                ) : previewError ? (
+                  <div className="flex h-full items-center justify-center p-6">
+                    <div className="max-w-md text-center">
+                      <p className="text-sm font-medium text-[#e53e3e] mb-2">Preview unavailable</p>
+                      <p className="text-sm text-[#4a5a6a]">{previewError}</p>
+                    </div>
+                  </div>
+                ) : viewingFileUrl && viewingFileType.startsWith('image/') ? (
+                  <div className="flex h-full items-center justify-center p-4">
+                    <img
+                      src={viewingFileUrl}
+                      alt={viewingFile.fileName}
+                      className="max-h-full max-w-full object-contain rounded-lg shadow-lg"
+                    />
+                  </div>
+                ) : (
+                  <div className="relative h-full w-full overflow-hidden">
+                    {viewingFileType === 'application/pdf' && (
+                      <div
+                        className="absolute left-0 top-0 z-10 h-12 w-full border-b border-[#dfe6f1] bg-gray-100"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <iframe
+                      src={getPreviewSrc() || undefined}
+                      className="w-full h-full border-none"
+                      title={viewingFile.fileName}
+                      onError={(e) => {
+                        console.error('❌ preview error:', e)
+                        setPreviewError('The report could not be displayed in the browser preview.')
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-[#e6ecf5] flex justify-end gap-2">
+                <button
+                  onClick={closePreview}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-[#1a2a3a] transition-all"
+                  style={{ background: '#f0f2f5', border: '1px solid #e6ecf5' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

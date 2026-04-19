@@ -42,6 +42,22 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for certificates
 });
 
+const getInlineMimeType = (file) => {
+  const ext = path.extname(file?.file_name || file?.file_path || '').toLowerCase();
+
+  switch (ext) {
+    case '.pdf':
+      return 'application/pdf';
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    default:
+      return 'application/octet-stream';
+  }
+};
+
 class FileController {
   static async uploadFile(req, res) {
     try {
@@ -146,8 +162,26 @@ class FileController {
   static async getFile(req, res) {
     try {
       const { fileId } = req.params;
-      const userId = req.user.id;
-      const userRole = req.user.role;
+      let userId = req.user?.id;
+      let userRole = req.user?.role;
+
+      // If no user from middleware, try to extract from query parameter token
+      if (!userId && req.query.token) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+          userId = decoded.id;
+          userRole = decoded.role;
+          console.log(`[getFile] User authenticated via query token: ${userId}, role: ${userRole}`);
+        } catch (tokenError) {
+          console.error('[getFile] Invalid query token:', tokenError.message);
+          return res.status(401).json({ error: 'Invalid authentication token' });
+        }
+      }
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       console.log(`[getFile] Attempting to download file ${fileId}, User: ${userId}, Role: ${userRole}`);
 
@@ -195,6 +229,59 @@ class FileController {
       res.download(file.file_path, file.file_name);
     } catch (error) {
       console.error('Get file error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async previewFile(req, res) {
+    try {
+      const { fileId } = req.params;
+      let userId = req.user?.id;
+      let userRole = req.user?.role;
+
+      if (!userId && req.query.token) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+          userId = decoded.id;
+          userRole = decoded.role;
+        } catch (tokenError) {
+          return res.status(401).json({ error: 'Invalid authentication token' });
+        }
+      }
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const file = await FileModel.findById(fileId);
+      if (!file) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      if (userRole !== 'admin' && file.user_id !== userId) {
+        if (userRole === 'doctor') {
+          const RecordAccessModel = require('../models/RecordAccess');
+          const access = await RecordAccessModel.checkApprovedAccess(userId, fileId);
+          if (!access) {
+            return res.status(403).json({ error: 'Access denied to this file' });
+          }
+        } else {
+          return res.status(403).json({ error: 'Access denied to this file' });
+        }
+      }
+
+      if (!fs.existsSync(file.file_path)) {
+        return res.status(404).json({ error: 'File not found on server' });
+      }
+
+      const contentType = getInlineMimeType(file);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', `inline; filename="${file.file_name}"`);
+      res.sendFile(path.resolve(file.file_path));
+    } catch (error) {
+      console.error('Preview file error:', error);
       res.status(500).json({ error: error.message });
     }
   }

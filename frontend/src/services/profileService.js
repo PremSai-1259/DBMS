@@ -54,6 +54,19 @@ export const profileService = {
   getFileInfo: (fileId) =>
     api.get(`/files/${fileId}/info`),
 
+  // Fetch a file as a blob using authenticated headers
+  fetchFileBlob: async (fileId) => {
+    const response = await api.get(`/files/${fileId}`, {
+      responseType: 'blob',
+      timeout: 30000
+    })
+
+    return {
+      blob: response.data,
+      contentType: response.headers?.['content-type'] || 'application/octet-stream'
+    }
+  },
+
   // Doctor: get patient profile summary from shared appointments
   getDoctorPatientSummary: (patientId) =>
     api.get(`/appointments/patient/${patientId}/summary`),
@@ -81,13 +94,10 @@ export const profileService = {
   // Download file with auth headers
   downloadFile: async (fileId, fileName) => {
     try {
-      const response = await api.get(`/files/${fileId}`, {
-        responseType: 'blob',
-        timeout: 30000 // 30 second timeout for downloads
-      })
+      const { blob } = await profileService.fetchFileBlob(fileId)
       
       // Create blob and download
-      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.setAttribute('download', fileName || `file-${fileId}`)
@@ -100,6 +110,17 @@ export const profileService = {
     } catch (error) {
       console.error('Download error:', error)
       throw error
+    }
+  },
+
+  // Preview file in-browser without triggering a download
+  previewFile: async (fileId) => {
+    const { blob, contentType } = await profileService.fetchFileBlob(fileId)
+    const blobUrl = window.URL.createObjectURL(new Blob([blob], { type: contentType }))
+
+    return {
+      url: blobUrl,
+      contentType
     }
   },
 }

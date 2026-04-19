@@ -23,6 +23,9 @@ router.post('/upload', authMiddleware, upload.single('file'), handleMulterError,
 // GET /files/:fileId/info - Get file info without downloading
 router.get('/:fileId/info', authMiddleware, FileController.getFileInfo);
 
+// GET /files/:fileId/preview - Inline preview with auth via header or query token
+router.get('/:fileId/preview', FileController.previewFile);
+
 // GET /files/:fileId - Download file
 router.get('/:fileId', authMiddleware, FileController.getFile);
 

@@ -19,7 +19,9 @@ class RecordAccessModel {
 
   static async findByDoctorId(doctorId) {
     const query = `
-      SELECT ra.*, u_doc.name as doctor_name, u_pat.name as patient_name, f.file_name
+      SELECT ra.id, ra.patient_id, ra.doctor_id, ra.file_id AS fileId, ra.status, 
+             ra.requested_at, ra.updated_at, ra.expires_at,
+             u_doc.name as doctor_name, u_pat.name as patient_name, f.file_name
       FROM record_access ra
       JOIN users u_doc ON ra.doctor_id = u_doc.id
       JOIN users u_pat ON ra.patient_id = u_pat.id
@@ -35,7 +37,9 @@ class RecordAccessModel {
 
   static async findByPatientId(patientId) {
     const query = `
-      SELECT ra.*, u.name as doctor_name, f.file_name
+      SELECT ra.id, ra.patient_id, ra.doctor_id, ra.file_id AS fileId, ra.status, 
+             ra.requested_at, ra.updated_at, ra.expires_at,
+             u.name as doctor_name, f.file_name
       FROM record_access ra
       JOIN users u ON ra.doctor_id = u.id
       JOIN files f ON ra.file_id = f.id
