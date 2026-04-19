@@ -535,6 +535,23 @@ class DoctorApprovalController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  // Get all approved doctors for patient portal (public endpoint)
+  static async getAllApprovedDoctors(req, res) {
+    try {
+      console.log('🔵 [getAllApprovedDoctors] Starting...');
+      const doctors = await DoctorProfileModel.getAllApprovedDoctors();
+      
+      console.log(`🟢 [getAllApprovedDoctors] Retrieved ${doctors ? doctors.length : 0} doctors`);
+      console.log('🟢 [getAllApprovedDoctors] Doctor data:', doctors);
+      
+      res.json(doctors || []);
+    } catch (error) {
+      console.error('🔴 [getAllApprovedDoctors] Error:', error);
+      console.error('🔴 [getAllApprovedDoctors] Error stack:', error.stack);
+      res.status(500).json({ error: error.message, details: error.toString() });
+    }
+  }
 }
 
 module.exports = DoctorApprovalController;

@@ -4,24 +4,11 @@ import useAuth from '../hooks/useAuth'
 import useToast from '../hooks/useToast'
 import Toast from '../components/Toast'
 import ScheduleManager from '../components/ScheduleManager'
-import { getAppointments } from '../services/appointmentService'
+import PatientProfileModal from '../components/PatientProfileModal'
+import DoctorAccessReports from '../components/DoctorAccessReports'
+import { getAppointments, addConsultationNote, updateConsultationNote } from '../services/appointmentService'
 import { profileService } from '../services/profileService'
 import { slotService } from '../services/slotService'
-
-const TAG_OPTIONS = [
-  { label: 'Coronary Artery', emoji: '❤️' },
-  { label: 'Valvular Disease', emoji: '🫀' },
-  { label: 'Heart Transplant', emoji: '💉' },
-  { label: 'Pacemaker', emoji: '⚡' },
-  { label: 'Peripheral Artery', emoji: '🩸' },
-  { label: 'Congenital Heart', emoji: '🫁' },
-  { label: 'Cardiac Imaging', emoji: '📷' },
-  { label: 'Stress Testing', emoji: '🏃' },
-  { label: 'Preventive Cardio', emoji: '🛡️' },
-  { label: 'Migraine', emoji: '🧠' },
-  { label: 'Epilepsy', emoji: '⚡' },
-  { label: 'Sleep Apnea', emoji: '😴' },
-]
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -40,8 +27,15 @@ const DoctorDashboard = () => {
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
-  const [selectedTags, setSelectedTags] = useState([])
-  const [tagSubmitted, setTagSubmitted] = useState(false)
+  const [selectedPatientId, setSelectedPatientId] = useState(null)
+  const [consultationAppointment, setConsultationAppointment] = useState(null)
+  const [consultationSaving, setConsultationSaving] = useState(false)
+  const [consultationForm, setConsultationForm] = useState({
+    reasonForVisit: '',
+    diagnosis: '',
+    prescription: '',
+    additionalNotes: '',
+  })
   const [activeDayIdx, setActiveDayIdx] = useState(0)
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(() => {
     const today = new Date()
@@ -84,7 +78,7 @@ const DoctorDashboard = () => {
       if (profileData.status === 'fulfilled') setProfile(profileData.value?.data)
 
       try {
-        const slotsRes = await slotService.getAllSlots()
+        const slotsRes = await slotService.getDoctorAvailableSlots(user?.id)
         setSlots(slotsRes?.data || [])
       } catch { /* slots optional */ }
     } catch (err) {
@@ -96,11 +90,76 @@ const DoctorDashboard = () => {
 
   const handleLogout = () => { logout(); navigate('/') }
 
+  const openConsultationModal = (appointment) => {
+    setConsultationAppointment(appointment)
+    setConsultationForm({
+      reasonForVisit: appointment.consultation?.reasonForVisit || '',
+      diagnosis: appointment.consultation?.diagnosis || '',
+      prescription: appointment.consultation?.prescription || '',
+      additionalNotes: appointment.consultation?.additionalNotes || '',
+    })
+  }
+
+  const closeConsultationModal = () => {
+    setConsultationAppointment(null)
+    setConsultationForm({
+      reasonForVisit: '',
+      diagnosis: '',
+      prescription: '',
+      additionalNotes: '',
+    })
+  }
+
+  const handleConsultationChange = (field) => (event) => {
+    setConsultationForm((prev) => ({ ...prev, [field]: event.target.value }))
+  }
+
+  const saveConsultation = async () => {
+    if (!consultationAppointment?.id) return
+
+    setConsultationSaving(true)
+    try {
+      if (consultationAppointment.consultation?.id) {
+        await updateConsultationNote(consultationAppointment.consultation.id, consultationForm)
+        showToast('Consultation notes updated', 'success')
+      } else {
+        await addConsultationNote(consultationAppointment.id, consultationForm)
+        showToast('Consultation notes saved and appointment marked completed', 'success')
+      }
+
+      closeConsultationModal()
+      await loadAll()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setConsultationSaving(false)
+    }
+  }
+
   const displayName = profile
     ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim()
     : user ? `${user.name || user.firstName || ''}` : 'Doctor'
 
   const specialization = approvalStatus?.doctorProfile?.specialization || 'Pending Verification'
+  const getAppointmentStart = (appointment) => {
+    const dateValue = appointment.date || appointment.slot?.date
+    const timeValue = appointment.slot?.startTime || appointment.slotStartTime
+
+    if (!dateValue) return null
+
+    const parsed = new Date(timeValue ? `${dateValue}T${timeValue}` : dateValue)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+
+  const getAppointmentEnd = (appointment) => {
+    const dateValue = appointment.date || appointment.slot?.date
+    const timeValue = appointment.slot?.endTime || appointment.slotEndTime || appointment.slot?.startTime || appointment.slotStartTime
+
+    if (!dateValue) return null
+
+    const parsed = new Date(timeValue ? `${dateValue}T${timeValue}` : dateValue)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
 
   // =====================================================
   // PENDING APPROVAL VIEW
@@ -241,39 +300,73 @@ const DoctorDashboard = () => {
   }
 
   const todayAppts = appointments.filter(a => {
-    if (!a.date && !a.slot?.date) return false
-    const d = new Date(a.date || a.slot?.date)
+    const d = getAppointmentStart(a)
+    if (!d) return false
     const today = new Date()
     return d.toDateString() === today.toDateString()
   })
 
   const confirmedCount = appointments.filter(a => a.status === 'confirmed').length
   const thisMonth = appointments.filter(a => {
-    const d = new Date(a.date || a.slot?.date)
+    const d = getAppointmentStart(a)
+    if (!d) return false
     const now = new Date()
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
   }).length
 
-  const handleTagToggle = (label) => {
-    setSelectedTags(prev => prev.includes(label) ? prev.filter(t => t !== label) : [...prev, label])
-    setTagSubmitted(false)
-  }
+  const now = new Date()
+  const upcomingAppts = appointments.filter(a => {
+    const d = getAppointmentStart(a)
+    return a.status === 'confirmed' && d && d >= now
+  }).sort((a, b) => getAppointmentStart(a) - getAppointmentStart(b))
 
-  const handleTagSubmit = () => {
-    if (selectedTags.length === 0) { showToast('Select at least one tag', 'warning'); return }
-    setTagSubmitted(true)
-    showToast(`${selectedTags.length} tag request(s) submitted!`, 'success')
-  }
+  const pendingConsultationAppts = appointments.filter(a => {
+    const d = getAppointmentEnd(a)
+    return a.status === 'confirmed' && d && d < now
+  }).sort((a, b) => getAppointmentStart(b) - getAppointmentStart(a))
+
+  const completedAppts = appointments.filter(a => a.status === 'completed')
+    .sort((a, b) => getAppointmentStart(b) - getAppointmentStart(a))
+
+  const pastAppts = appointments.filter(a => a.status === 'cancelled')
+    .sort((a, b) => getAppointmentStart(b) - getAppointmentStart(a)) // Newest first
+
+  const upcomingSlots = (slots || []).filter(slot => {
+    if (!slot?.slotDate || !slot?.slotStartTime) return false
+
+    const slotStart = new Date(`${slot.slotDate}T${slot.slotStartTime}`)
+    return !Number.isNaN(slotStart.getTime()) && slotStart >= now
+  }).sort((a, b) => {
+    const first = new Date(`${a.slotDate}T${a.slotStartTime}`)
+    const second = new Date(`${b.slotDate}T${b.slotStartTime}`)
+    return first - second
+  })
 
   const navItems = [
     { key: 'overview', icon: '🏠', label: 'Overview' },
-    { key: 'tags', icon: '🏷️', label: 'Manage Tags' },
+    { key: 'access-reports', icon: '📋', label: 'Access Reports' },
     { key: 'schedule', icon: '📅', label: 'Schedule' },
   ]
 
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(160deg, #f8faff 0%, #eff4fb 100%)' }}>
       <Toast toast={toast} />
+      {selectedPatientId && (
+        <PatientProfileModal
+          patientId={selectedPatientId}
+          onClose={() => setSelectedPatientId(null)}
+        />
+      )}
+      {consultationAppointment && (
+        <ConsultationModal
+          appointment={consultationAppointment}
+          form={consultationForm}
+          saving={consultationSaving}
+          onChange={handleConsultationChange}
+          onClose={closeConsultationModal}
+          onSave={saveConsultation}
+        />
+      )}
 
       {/* TOP NAV */}
       <nav className="fixed top-0 left-0 right-0 z-40 h-16 flex items-center justify-between px-8"
@@ -342,11 +435,9 @@ const DoctorDashboard = () => {
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-2 gap-4 mb-8">
                 {[
                   { icon: '👥', val: todayAppts.length || '—', label: "Today's Patients" },
-                  { icon: '⭐', val: '4.9', label: 'Rating' },
-                  { icon: '✅', val: confirmedCount, label: 'Confirmed' },
                   { icon: '📆', val: thisMonth, label: 'This Month' },
                 ].map(s => (
                   <div key={s.label} className="bg-white rounded-2xl p-5 flex flex-col items-center text-center"
@@ -358,70 +449,44 @@ const DoctorDashboard = () => {
                 ))}
               </div>
 
-              {/* Today's schedule */}
-              <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
-                <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4">
-                  Today's Schedule{' '}
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: '#e8f0fb', color: '#3a7bd5' }}>
-                    {todayAppts.length} appointments
-                  </span>
-                </h3>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="w-6 h-6 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin" />
-                  </div>
-                ) : todayAppts.length === 0 ? (
-                  <div className="text-center py-8 text-[#8a9ab0]">
-                    <div className="text-3xl mb-2">📅</div>
-                    <p className="text-sm">No appointments scheduled for today</p>
-                  </div>
-                ) : (
+              {/* Upcoming Appointments */}
+              {!loading && upcomingAppts.length > 0 && (
+                <div className="bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+                  <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4 flex items-center gap-2">
+                    <span>📅 Upcoming Appointments</span>
+                    <span className="text-xs font-medium px-2 py-1 rounded-full" style={{ background: '#e8f0fb', color: '#3a7bd5' }}>
+                      {upcomingAppts.length}
+                    </span>
+                  </h3>
                   <div className="flex flex-col gap-2">
-                    {todayAppts.map(apt => {
+                    {upcomingAppts.slice(0, 10).map(apt => {
                       const patientName = apt.patient?.name || apt.patientName || 'Patient'
-                      const time = apt.slot?.time || apt.time || '—'
-                      const notes = apt.notes || apt.reason || 'Consultation'
-                      return (
-                        <div key={apt.id || apt._id}
-                          className="flex items-center gap-4 py-3 px-4 rounded-xl"
-                          style={{ background: '#f8f9fc', border: '1px solid #e6ecf5' }}>
-                          <div className="text-sm font-semibold text-[#6b8cba] w-20 flex-shrink-0">{time}</div>
-                          <div className="flex-1">
-                            <div className="text-sm font-semibold text-[#1a2a3a]">{patientName}</div>
-                            <div className="text-xs text-[#8a9ab0]">{notes}</div>
-                          </div>
-                          <span className="text-xs font-medium px-2.5 py-1 rounded-full capitalize"
-                            style={apt.status === 'confirmed'
-                              ? { background: '#e6f9f2', color: '#1a9e6a' }
-                              : { background: '#fff8e6', color: '#b07a00' }}>
-                            {apt.status}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* All appointments */}
-              {!loading && appointments.length > 0 && (
-                <div className="bg-white rounded-2xl p-6 mt-5" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
-                  <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4">All Appointments</h3>
-                  <div className="flex flex-col gap-2">
-                    {appointments.slice(0, 10).map(apt => {
-                      const patientName = apt.patient?.name || apt.patientName || 'Patient'
+                      const patientEmail = apt.patient?.email || apt.patientEmail || ''
                       const time = apt.slot?.time || apt.time || '—'
                       const date = apt.date || apt.slot?.date
-                      const dateStr = date ? new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'
+                      const dateStr = date ? new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
                       return (
                         <div key={apt.id || apt._id}
                           className="flex items-center gap-4 py-3 px-4 rounded-xl"
-                          style={{ background: '#f8f9fc', border: '1px solid #e6ecf5' }}>
-                          <div className="text-xs text-[#6b8cba] w-24 flex-shrink-0">{dateStr} · {time}</div>
-                          <div className="flex-1 text-sm font-medium text-[#1a2a3a]">{patientName}</div>
+                          style={{ background: '#f0f7ff', border: '1px solid #c9dff0' }}>
+                          <div className="text-xs font-medium text-[#3a7bd5] w-28 flex-shrink-0 bg-white px-2.5 py-1.5 rounded-lg">{dateStr} · {time}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-[#1a2a3a]">{patientName}</div>
+                            {patientEmail && (
+                              <div className="text-xs text-[#8a9ab0] mt-0.5 truncate">{patientEmail}</div>
+                            )}
+                          </div>
+                          {apt.patientId && (
+                            <button
+                              onClick={() => setSelectedPatientId(apt.patientId)}
+                              className="rounded-xl px-3 py-2 text-xs font-medium text-[#3a7bd5] transition-all duration-200 hover:bg-white"
+                              style={{ border: '1px solid #c9dff0' }}
+                            >
+                              View Patient
+                            </button>
+                          )}
                           <span className="text-xs font-medium px-2.5 py-1 rounded-full capitalize"
-                            style={apt.status === 'confirmed' || apt.status === 'completed'
+                            style={apt.status === 'confirmed' 
                               ? { background: '#e6f9f2', color: '#1a9e6a' }
                               : apt.status === 'cancelled'
                               ? { background: '#fef0f0', color: '#e53e3e' }
@@ -434,66 +499,247 @@ const DoctorDashboard = () => {
                   </div>
                 </div>
               )}
+
+              {!loading && upcomingSlots.length > 0 && (
+                <div className="bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+                  <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4 flex items-center gap-2">
+                    <span>Upcoming Available Slots</span>
+                    <span className="text-xs font-medium px-2 py-1 rounded-full" style={{ background: '#e6f9f2', color: '#1a9e6a' }}>
+                      {upcomingSlots.length}
+                    </span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {upcomingSlots.slice(0, 12).map(slot => {
+                      const slotDateTime = new Date(`${slot.slotDate}T${slot.slotStartTime}`)
+                      const dateStr = slotDateTime.toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })
+                      const startTime = new Date(`${slot.slotDate}T${slot.slotStartTime}`).toLocaleTimeString('en-IN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                      })
+                      const endTime = new Date(`${slot.slotDate}T${slot.slotEndTime}`).toLocaleTimeString('en-IN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                      })
+
+                      return (
+                        <div key={slot.id}
+                          className="rounded-xl p-4"
+                          style={{ background: '#f4fbf7', border: '1px solid #d7f0e3' }}>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-[#1a9e6a] mb-2">
+                            Available
+                          </div>
+                          <div className="text-sm font-semibold text-[#1a2a3a]">{dateStr}</div>
+                          <div className="text-sm text-[#4a5a6a] mt-1">{startTime} - {endTime}</div>
+                          <div className="text-xs text-[#8a9ab0] mt-2">Slot #{slot.slotNumber}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {upcomingSlots.length > 12 && (
+                    <div className="text-xs text-[#8a9ab0] text-center mt-4 pt-4 border-t border-[#e6ecf5]">
+                      Showing 12 of {upcomingSlots.length} upcoming available slots
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!loading && pendingConsultationAppts.length > 0 && (
+                <div className="bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+                  <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4 flex items-center gap-2">
+                    <span>Pending Consultation Notes</span>
+                    <span className="text-xs font-medium px-2 py-1 rounded-full" style={{ background: '#fff8e6', color: '#b07a00' }}>
+                      {pendingConsultationAppts.length}
+                    </span>
+                  </h3>
+                  <div className="flex flex-col gap-3">
+                    {pendingConsultationAppts.slice(0, 10).map(apt => {
+                      const patientName = apt.patient?.name || apt.patientName || 'Patient'
+                      const patientEmail = apt.patient?.email || apt.patientEmail || ''
+                      const time = apt.slot?.time || apt.time || 'â€”'
+                      const date = apt.date || apt.slot?.date
+                      const dateStr = date ? new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : 'â€”'
+                      return (
+                        <div key={apt.id || apt._id}
+                          className="flex items-center gap-4 py-3 px-4 rounded-xl"
+                          style={{ background: '#fffaf0', border: '1px solid #f3dfb0' }}>
+                          <div className="text-xs text-[#8a9ab0] min-w-[180px] flex-shrink-0">{dateStr} Â· {time}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-[#4a5a6a]">{patientName}</div>
+                            {patientEmail && (
+                              <div className="text-xs text-[#8a9ab0] mt-0.5 truncate">{patientEmail}</div>
+                            )}
+                          </div>
+                          {apt.patientId && (
+                            <button
+                              onClick={() => setSelectedPatientId(apt.patientId)}
+                              className="rounded-xl px-3 py-2 text-xs font-medium text-[#3a7bd5] transition-all duration-200 hover:bg-white"
+                              style={{ border: '1px solid #d7e3f3' }}
+                            >
+                              View Patient
+                            </button>
+                          )}
+                          <button
+                            onClick={() => openConsultationModal(apt)}
+                            className="rounded-xl px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:-translate-y-px"
+                            style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}
+                          >
+                            Write Notes
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {!loading && completedAppts.length > 0 && (
+                <div className="bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+                  <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4 flex items-center gap-2">
+                    <span>Completed Appointments</span>
+                    <span className="text-xs font-medium px-2 py-1 rounded-full" style={{ background: '#e6f9f2', color: '#1a9e6a' }}>
+                      {completedAppts.length}
+                    </span>
+                  </h3>
+                  <div className="flex flex-col gap-3">
+                    {completedAppts.slice(0, 12).map(apt => {
+                      const patientName = apt.patient?.name || apt.patientName || 'Patient'
+                      const patientEmail = apt.patient?.email || apt.patientEmail || ''
+                      const time = apt.slot?.time || apt.time || 'â€”'
+                      const date = apt.date || apt.slot?.date
+                      const dateStr = date ? new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : 'â€”'
+
+                      return (
+                        <div key={apt.id || apt._id}
+                          className="rounded-xl border border-[#d7f0e3] bg-[#f4fbf7] px-4 py-4">
+                          <div className="flex items-start gap-4">
+                            <div className="text-xs font-medium text-[#1a9e6a] min-w-[180px] flex-shrink-0 rounded-lg bg-white px-2.5 py-1.5">
+                              {dateStr} Â· {time}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-[#1a2a3a]">{patientName}</div>
+                              {patientEmail && (
+                                <div className="text-xs text-[#8a9ab0] mt-0.5 truncate">{patientEmail}</div>
+                              )}
+                              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                <div className="rounded-lg bg-white px-3 py-2">
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Reason For Visit</div>
+                                  <div className="mt-1 text-sm text-[#4a5a6a]">{apt.consultation?.reasonForVisit || 'â€”'}</div>
+                                </div>
+                                <div className="rounded-lg bg-white px-3 py-2">
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Diagnosis</div>
+                                  <div className="mt-1 text-sm text-[#4a5a6a]">{apt.consultation?.diagnosis || 'â€”'}</div>
+                                </div>
+                                <div className="rounded-lg bg-white px-3 py-2">
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Prescription</div>
+                                  <div className="mt-1 text-sm text-[#4a5a6a] whitespace-pre-wrap">{apt.consultation?.prescription || 'â€”'}</div>
+                                </div>
+                                <div className="rounded-lg bg-white px-3 py-2">
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Additional Notes</div>
+                                  <div className="mt-1 text-sm text-[#4a5a6a] whitespace-pre-wrap">{apt.consultation?.additionalNotes || 'â€”'}</div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              {apt.patientId && (
+                                <button
+                                  onClick={() => setSelectedPatientId(apt.patientId)}
+                                  className="rounded-xl px-3 py-2 text-xs font-medium text-[#3a7bd5] transition-all duration-200 hover:bg-white"
+                                  style={{ border: '1px solid #c9dff0' }}
+                                >
+                                  View Patient
+                                </button>
+                              )}
+                              <button
+                                onClick={() => openConsultationModal(apt)}
+                                className="rounded-xl px-3 py-2 text-xs font-medium text-[#1a9e6a] transition-all duration-200 hover:bg-white"
+                                style={{ border: '1px solid #cce8d9' }}
+                              >
+                                Edit Notes
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Past Appointments */}
+              {!loading && pastAppts.length > 0 && (
+                <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+                  <h3 className="text-sm font-semibold text-[#1a2a3a] mb-4 flex items-center gap-2">
+                    <span>📋 Past Appointments</span>
+                    <span className="text-xs font-medium px-2 py-1 rounded-full" style={{ background: '#f5f5f5', color: '#6b8cba' }}>
+                      {pastAppts.length}
+                    </span>
+                  </h3>
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                    {pastAppts.slice(0, 15).map(apt => {
+                      const patientName = apt.patient?.name || apt.patientName || 'Patient'
+                      const patientEmail = apt.patient?.email || apt.patientEmail || ''
+                      const time = apt.slot?.time || apt.time || '—'
+                      const date = apt.date || apt.slot?.date
+                      const dateStr = date ? new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
+                      return (
+                        <div key={apt.id || apt._id}
+                          className="flex items-center gap-4 py-3 px-4 rounded-xl"
+                          style={{ background: '#fafbfc', border: '1px solid #e6ecf5' }}>
+                          <div className="text-xs text-[#8a9ab0] w-28 flex-shrink-0">{dateStr} · {time}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-[#4a5a6a]">{patientName}</div>
+                            {patientEmail && (
+                              <div className="text-xs text-[#8a9ab0] mt-0.5 truncate">{patientEmail}</div>
+                            )}
+                          </div>
+                          {apt.patientId && (
+                            <button
+                              onClick={() => setSelectedPatientId(apt.patientId)}
+                              className="rounded-xl px-3 py-2 text-xs font-medium text-[#3a7bd5] transition-all duration-200 hover:bg-white"
+                              style={{ border: '1px solid #d7e3f3' }}
+                            >
+                              View Patient
+                            </button>
+                          )}
+                          <span className="text-xs font-medium px-2.5 py-1 rounded-full capitalize"
+                            style={apt.status === 'confirmed' || apt.status === 'completed'
+                              ? { background: '#e6f9f2', color: '#1a9e6a' }
+                              : apt.status === 'cancelled'
+                              ? { background: '#fef0f0', color: '#e53e3e' }
+                              : { background: '#fff8e6', color: '#b07a00' }}>
+                            {apt.status}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {pastAppts.length > 15 && (
+                    <div className="text-xs text-[#8a9ab0] text-center mt-3 pt-3 border-t border-[#e6ecf5]">
+                      Showing 15 of {pastAppts.length} appointments
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!loading && upcomingAppts.length === 0 && pendingConsultationAppts.length === 0 && completedAppts.length === 0 && pastAppts.length === 0 && upcomingSlots.length === 0 && (
+                <div className="bg-white rounded-2xl p-8 text-center" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+                  <div className="text-4xl mb-3">📋</div>
+                  <p className="text-sm text-[#8a9ab0]">No appointments or upcoming slots yet</p>
+                </div>
+              )}
             </div>
           )}
 
-          {/* TAGS */}
-          {tab === 'tags' && (
-            <div>
-              <div className="mb-7">
-                <h2 className="text-2xl font-semibold text-[#1a2a3a]">Specialty Tags</h2>
-                <p className="text-sm text-[#8a9ab0] mt-1">Request tags that match your expertise — they help patients find you</p>
-              </div>
-
-              {/* Active tags */}
-              <div className="bg-white rounded-2xl p-6 mb-5"
-                style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
-                <h3 className="text-sm font-semibold text-[#1a2a3a] mb-1">Your Active Tags</h3>
-                <p className="text-xs text-[#8a9ab0] mb-4">Approved tags appear on your public profile</p>
-                <div className="flex flex-wrap gap-2">
-                  {['Heart Failure', 'Arrhythmia', 'Hypertension'].map(t => (
-                    <span key={t} className="text-xs font-medium px-3 py-1.5 rounded-full"
-                      style={{ background: '#e6f9f2', color: '#1a9e6a' }}>
-                      ✓ {t}
-                    </span>
-                  ))}
-                  <span className="text-xs font-medium px-3 py-1.5 rounded-full"
-                    style={{ background: '#fff8e6', color: '#b07a00' }}>
-                    ⏳ Valvular Disease
-                  </span>
-                </div>
-              </div>
-
-              {/* Request new tags */}
-              <div className="bg-white rounded-2xl p-6"
-                style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
-                <h3 className="text-sm font-semibold text-[#1a2a3a] mb-1">Request New Tags</h3>
-                <p className="text-xs text-[#8a9ab0] mb-5">Select conditions you want to be listed under. Reviewed by admin.</p>
-                <div className="grid grid-cols-3 gap-3 mb-6">
-                  {TAG_OPTIONS.map(tag => (
-                    <button key={tag.label}
-                      onClick={() => handleTagToggle(tag.label)}
-                      className="flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 text-left"
-                      style={selectedTags.includes(tag.label)
-                        ? { background: '#e8f0fb', color: '#3a7bd5', border: '1.5px solid #3a7bd5' }
-                        : { background: '#f8f9fc', color: '#4a5a6a', border: '1.5px solid #e6ecf5' }}>
-                      <span className="text-lg">{tag.emoji}</span>
-                      <span className="text-[13px]">{tag.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-4">
-                  <button onClick={handleTagSubmit}
-                    className="px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all duration-200 hover:-translate-y-px"
-                    style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)', boxShadow: '0 4px 12px rgba(58,123,213,0.25)' }}>
-                    Submit Request
-                  </button>
-                  {tagSubmitted && (
-                    <span className="text-sm text-[#1a9e6a]">✓ {selectedTags.length} request(s) submitted for review</span>
-                  )}
-                </div>
-              </div>
-            </div>
+          {/* ACCESS REPORTS */}
+          {tab === 'access-reports' && (
+            <DoctorAccessReports />
           )}
 
           {/* SCHEDULE */}
@@ -545,6 +791,112 @@ const DoctorDashboard = () => {
             </div>
           )}
         </main>
+      </div>
+    </div>
+  )
+}
+
+const ConsultationModal = ({ appointment, form, saving, onChange, onClose, onSave }) => {
+  const patientName = appointment?.patient?.name || appointment?.patientName || 'Patient'
+  const patientEmail = appointment?.patient?.email || appointment?.patientEmail || ''
+  const time = appointment?.slot?.time || appointment?.time || '—'
+  const date = appointment?.date || appointment?.slot?.date
+  const dateStr = date ? new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+
+  return (
+    <div
+      className="fixed inset-0 z-[260] flex items-center justify-center p-4"
+      style={{ background: 'rgba(20, 40, 80, 0.45)', backdropFilter: 'blur(6px)' }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-2xl rounded-3xl bg-white p-8"
+        style={{ boxShadow: '0 30px 80px rgba(20, 40, 80, 0.24)' }}
+      >
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-2xl font-semibold text-[#1a2a3a]">
+              {appointment?.consultation?.id ? 'Edit Consultation Notes' : 'Write Consultation Notes'}
+            </h3>
+            <p className="mt-1 text-sm text-[#8a9ab0]">
+              {patientName} · {dateStr} · {time}
+            </p>
+            {patientEmail && <p className="mt-1 text-sm text-[#8a9ab0]">{patientEmail}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2 text-sm font-medium text-[#4a5a6a] transition-all duration-200 hover:bg-[#f8f9fc]"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[#8a9ab0]">Reason For Visit</span>
+            <textarea
+              value={form.reasonForVisit}
+              onChange={onChange('reasonForVisit')}
+              rows={4}
+              className="w-full rounded-2xl border border-[#d0daea] bg-[#f8f9fc] px-4 py-3 text-sm text-[#1a2a3a] outline-none transition-all duration-200 focus:border-[#3a7bd5] focus:bg-white"
+              placeholder="Describe the patient's concern or chief complaint"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[#8a9ab0]">Diagnosis</span>
+            <textarea
+              value={form.diagnosis}
+              onChange={onChange('diagnosis')}
+              rows={4}
+              className="w-full rounded-2xl border border-[#d0daea] bg-[#f8f9fc] px-4 py-3 text-sm text-[#1a2a3a] outline-none transition-all duration-200 focus:border-[#3a7bd5] focus:bg-white"
+              placeholder="Write your diagnosis or findings"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[#8a9ab0]">Prescription</span>
+            <textarea
+              value={form.prescription}
+              onChange={onChange('prescription')}
+              rows={4}
+              className="w-full rounded-2xl border border-[#d0daea] bg-[#f8f9fc] px-4 py-3 text-sm text-[#1a2a3a] outline-none transition-all duration-200 focus:border-[#3a7bd5] focus:bg-white"
+              placeholder="Medicines, dosage, and instructions"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[#8a9ab0]">Additional Notes</span>
+            <textarea
+              value={form.additionalNotes}
+              onChange={onChange('additionalNotes')}
+              rows={4}
+              className="w-full rounded-2xl border border-[#d0daea] bg-[#f8f9fc] px-4 py-3 text-sm text-[#1a2a3a] outline-none transition-all duration-200 focus:border-[#3a7bd5] focus:bg-white"
+              placeholder="Follow-up steps, advice, or other observations"
+            />
+          </label>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-[#d0daea] px-4 py-2.5 text-sm font-medium text-[#4a5a6a] transition-all duration-200 hover:bg-[#f8f9fc]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}
+          >
+            {saving
+              ? 'Saving...'
+              : appointment?.consultation?.id
+              ? 'Update Notes'
+              : 'Save Notes & Complete Appointment'}
+          </button>
+        </div>
       </div>
     </div>
   )

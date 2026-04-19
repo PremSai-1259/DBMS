@@ -128,6 +128,44 @@ class DoctorProfileModel {
     const [result] = await db.execute(query, [userId]);
     return result.affectedRows > 0;
   }
+
+  /**
+   * Get all approved doctors for patient portal
+   * Returns doctors with their basic info for the find specialist view
+   * @returns {Promise<Array>} Array of approved doctors
+   */
+  static async getAllApprovedDoctors() {
+    const query = `
+      SELECT 
+        dp.id,
+        dp.user_id as doctorId,
+        u.name as doctorName,
+        u.email,
+        dp.specialization,
+        dp.experience,
+        dp.hospital_name as hospitalName,
+        dp.address,
+        dp.average_rating as rating,
+        dp.is_verified as isVerified
+      FROM doctor_profiles dp
+      INNER JOIN users u ON dp.user_id = u.id
+      WHERE dp.is_verified = TRUE
+      ORDER BY u.name ASC
+    `;
+
+    try {
+      console.log('🔵 [DoctorProfile.getAllApprovedDoctors] Executing query...');
+      console.log('🔵 [DoctorProfile.getAllApprovedDoctors] Query:', query);
+      const [doctors] = await db.execute(query);
+      console.log('🟢 [DoctorProfile.getAllApprovedDoctors] Query result:', doctors);
+      console.log(`🟢 [DoctorProfile.getAllApprovedDoctors] Returning ${doctors ? doctors.length : 0} doctors`);
+      return doctors || [];
+    } catch (error) {
+      console.error('🔴 [DoctorProfile.getAllApprovedDoctors] Error:', error);
+      console.error('🔴 [DoctorProfile.getAllApprovedDoctors] Error stack:', error.stack);
+      throw error;
+    }
+  }
 }
 
 module.exports = DoctorProfileModel;

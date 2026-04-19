@@ -196,6 +196,81 @@ const ScheduleManager = ({ selectedDate }) => {
     setLocalChanges(allSlots);
   };
 
+  // Helper function to check if a slot time has passed
+  const isSlotExpired = (slotStartTime) => {
+    const now = new Date();
+    const selectedDateTime = new Date(selectedDate);
+    
+    // If the selected date is in the past, all slots are expired
+    if (selectedDateTime < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+      return true;
+    }
+    
+    // If it's today, check if the slot time has passed
+    if (selectedDateTime.toDateString() === now.toDateString()) {
+      const [hours, minutes] = slotStartTime.split(':').map(Number);
+      const slotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
+      return slotTime < now;
+    }
+    
+    return false;
+  };
+
+  // Helper function to get slot status styles
+  const getSlotStyle = (slot) => {
+    const isExpired = isSlotExpired(slot.startTime);
+    
+    if (isExpired) {
+      // Expired/Completed - Grey
+      return {
+        background: '#d1d5db',
+        borderColor: '#9ca3af',
+        textColor: '#6b7280',
+        badgeBg: '#e5e7eb',
+        badgeText: '#6b7280',
+        badge: '✓',
+        isDisabled: true
+      };
+    }
+    
+    if (slot.isBooked) {
+      // Booked - Orange
+      return {
+        background: 'linear-gradient(135deg, #fed7aa, #fdba74)',
+        borderColor: '#f97316',
+        textColor: '#1a2a3a',
+        badgeBg: '#fed7aa',
+        badgeText: '#b45309',
+        badge: '📅',
+        isDisabled: false
+      };
+    }
+    
+    if (slot.isAvailable) {
+      // Available - Green
+      return {
+        background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
+        borderColor: '#16a34a',
+        textColor: '#1a2a3a',
+        badgeBg: '#dcfce7',
+        badgeText: '#166534',
+        badge: '✓',
+        isDisabled: false
+      };
+    }
+    
+    // Unavailable - White
+    return {
+      background: '#ffffff',
+      borderColor: '#e5e7eb',
+      textColor: '#1a2a3a',
+      badgeBg: '#f3f4f6',
+      badgeText: '#6b7280',
+      badge: '○',
+      isDisabled: false
+    };
+  };
+
   const availableCount = slots.filter(s => s.isAvailable).length;
   const changedCount = Object.keys(localChanges).length;
 
@@ -345,7 +420,7 @@ const ScheduleManager = ({ selectedDate }) => {
               </button>
             </div>
           </div>
-          <p className="text-xs text-[#8a9ab0]">Click on any slot to toggle availability. Green = Available, Gray = Unavailable</p>
+          <p className="text-xs text-[#8a9ab0]">Click on any slot to toggle availability. <span className="font-bold">Green</span> = Available, <span className="font-bold">Orange</span> = Booked, <span className="font-bold">Grey</span> = Completed/Expired</p>
         </div>
 
         {/* Morning Slots */}
@@ -359,32 +434,31 @@ const ScheduleManager = ({ selectedDate }) => {
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {morningSlots.map(slot => (
-              <button
-                key={slot.slotNumber}
-                onClick={() => handleToggleSlot(slot.slotNumber)}
-                className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2"
-                style={
-                  slot.isAvailable
-                    ? {
-                        background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
-                        borderColor: '#16a34a',
-                        boxShadow: '0 4px 12px rgba(22, 163, 74, 0.15)'
-                      }
-                    : {
-                        background: '#ffffff',
-                        borderColor: '#e5e7eb'
-                      }
-                }>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-[#1a2a3a]">{slot.slotNumber}</div>
-                  <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
-                  <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block ${slot.isAvailable ? 'bg-[#dcfce7] text-[#166534]' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
-                    {slot.isAvailable ? '✓' : '○'}
+            {morningSlots.map(slot => {
+              const slotStyle = getSlotStyle(slot);
+              return (
+                <button
+                  key={slot.slotNumber}
+                  onClick={() => !slotStyle.isDisabled && handleToggleSlot(slot.slotNumber)}
+                  disabled={slotStyle.isDisabled}
+                  className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  style={{
+                    background: slotStyle.background,
+                    borderColor: slotStyle.borderColor,
+                    boxShadow: slotStyle.isDisabled ? 'none' : `0 4px 12px rgba(22, 163, 74, 0.15)`
+                  }}>
+                  <div className="text-center">
+                    <div className="text-lg font-bold" style={{ color: slotStyle.textColor }}>{slot.slotNumber}</div>
+                    <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
+                    <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block`}
+                      style={{ background: slotStyle.badgeBg, color: slotStyle.badgeText }}>
+                      {slotStyle.badge}
+                    </div>
+                    {slotStyle.isDisabled && <div className="text-xs text-[#6b7280] mt-2 font-semibold">Completed</div>}
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -408,32 +482,31 @@ const ScheduleManager = ({ selectedDate }) => {
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {afternoonSlots.map(slot => (
-              <button
-                key={slot.slotNumber}
-                onClick={() => handleToggleSlot(slot.slotNumber)}
-                className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2"
-                style={
-                  slot.isAvailable
-                    ? {
-                        background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
-                        borderColor: '#16a34a',
-                        boxShadow: '0 4px 12px rgba(22, 163, 74, 0.15)'
-                      }
-                    : {
-                        background: '#ffffff',
-                        borderColor: '#e5e7eb'
-                      }
-                }>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-[#1a2a3a]">{slot.slotNumber}</div>
-                  <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
-                  <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block ${slot.isAvailable ? 'bg-[#dcfce7] text-[#166534]' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
-                    {slot.isAvailable ? '✓' : '○'}
+            {afternoonSlots.map(slot => {
+              const slotStyle = getSlotStyle(slot);
+              return (
+                <button
+                  key={slot.slotNumber}
+                  onClick={() => !slotStyle.isDisabled && handleToggleSlot(slot.slotNumber)}
+                  disabled={slotStyle.isDisabled}
+                  className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  style={{
+                    background: slotStyle.background,
+                    borderColor: slotStyle.borderColor,
+                    boxShadow: slotStyle.isDisabled ? 'none' : `0 4px 12px rgba(22, 163, 74, 0.15)`
+                  }}>
+                  <div className="text-center">
+                    <div className="text-lg font-bold" style={{ color: slotStyle.textColor }}>{slot.slotNumber}</div>
+                    <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
+                    <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block`}
+                      style={{ background: slotStyle.badgeBg, color: slotStyle.badgeText }}>
+                      {slotStyle.badge}
+                    </div>
+                    {slotStyle.isDisabled && <div className="text-xs text-[#6b7280] mt-2 font-semibold">Completed</div>}
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -485,41 +558,41 @@ const ScheduleManager = ({ selectedDate }) => {
       <div className="bg-gradient-to-r from-[#dbeafe] to-[#dbeafe] rounded-2xl p-6 border-2 border-[#3b82f6]">
         <div className="space-y-3">
           <p className="text-sm font-bold text-[#1e40af] flex items-center gap-2">
-            <span className="text-lg">📖</span> How to Set Your Schedule
+            <span className="text-lg">📖</span> Slot Status Guide
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
             <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">1️⃣</span>
+              <span className="text-2xl flex-shrink-0">🟢</span>
               <div>
-                <p className="text-xs font-semibold text-[#1e40af]">Click Slots to Toggle</p>
-                <p className="text-xs text-[#3730a3] mt-0.5">Select the time slots when you're available</p>
+                <p className="text-xs font-semibold text-[#16a34a]">Available</p>
+                <p className="text-xs text-[#047857] mt-0.5">Click to set slots where you can accept patients</p>
               </div>
             </div>
             <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">2️⃣</span>
+              <span className="text-2xl flex-shrink-0">🟠</span>
               <div>
-                <p className="text-xs font-semibold text-[#1e40af]">Green = Available</p>
-                <p className="text-xs text-[#3730a3] mt-0.5">Selected slots will be highlighted in green</p>
+                <p className="text-xs font-semibold text-[#b45309]">Booked</p>
+                <p className="text-xs text-[#92400e] mt-0.5">Patient has already scheduled an appointment</p>
               </div>
             </div>
             <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">3️⃣</span>
+              <span className="text-2xl flex-shrink-0">⚫</span>
               <div>
-                <p className="text-xs font-semibold text-[#1e40af]">Save Your Changes</p>
-                <p className="text-xs text-[#3730a3] mt-0.5">Click the Save button to store your schedule</p>
+                <p className="text-xs font-semibold text-[#6b7280]">Completed/Expired</p>
+                <p className="text-xs text-[#4b5563] mt-0.5">Time has passed - slot is no longer available</p>
               </div>
             </div>
             <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">4️⃣</span>
+              <span className="text-2xl flex-shrink-0">⚪</span>
               <div>
-                <p className="text-xs font-semibold text-[#1e40af]">Patients Can Book</p>
-                <p className="text-xs text-[#3730a3] mt-0.5">Patients can only book during your available slots</p>
+                <p className="text-xs font-semibold text-[#6b7280]">Unavailable</p>
+                <p className="text-xs text-[#4b5563] mt-0.5">You haven't set this slot as available yet</p>
               </div>
             </div>
           </div>
           <div className="mt-4 p-3 rounded-lg bg-white border border-[#bfdbfe]">
             <p className="text-xs text-[#1e40af] font-semibold">💡 Pro Tip:</p>
-            <p className="text-xs text-[#3730a3] mt-1">Use "Select All" to make all slots available, then unselect the ones you'd prefer to skip.</p>
+            <p className="text-xs text-[#3730a3] mt-1">Use "Select All" to make all slots available, then unselect the ones you'd prefer to skip. Expired slots cannot be clicked.</p>
           </div>
         </div>
       </div>

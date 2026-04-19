@@ -58,7 +58,7 @@ class SlotController {
           id: slot.id,
           slotNumber: slot.slot_number,
           isBooked: slot.is_booked,
-          isActive: slot.is_active
+          isAvailable: slot.is_available
         }))
       });
     } catch (error) {
@@ -95,6 +95,27 @@ class SlotController {
       });
     } catch (error) {
       console.error('Get available slots error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getAvailableSlotsForDoctor(req, res) {
+    try {
+      const { doctorId } = req.params;
+
+      // Validation
+      if (!doctorId) {
+        return res.status(400).json({ error: 'doctorId required' });
+      }
+
+      // Get available slots for this doctor
+      const slots = await AppointmentSlotModel.getAvailableSlotsForDoctor(doctorId);
+
+      console.log(`🟢 [getAvailableSlotsForDoctor] Retrieved ${slots.length} slots for doctor ${doctorId}`);
+
+      res.json(slots);
+    } catch (error) {
+      console.error('Get available slots for doctor error:', error);
       res.status(500).json({ error: error.message });
     }
   }

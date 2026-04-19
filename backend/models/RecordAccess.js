@@ -19,14 +19,17 @@ class RecordAccessModel {
 
   static async findByDoctorId(doctorId) {
     const query = `
-      SELECT ra.*, u.name as patient_name, f.file_name
+      SELECT ra.*, u_doc.name as doctor_name, u_pat.name as patient_name, f.file_name
       FROM record_access ra
-      JOIN users u ON ra.patient_id = u.id
+      JOIN users u_doc ON ra.doctor_id = u_doc.id
+      JOIN users u_pat ON ra.patient_id = u_pat.id
       JOIN files f ON ra.file_id = f.id
-      WHERE ra.doctor_id = ? AND ra.status = 'pending'
+      WHERE ra.doctor_id = ?
       ORDER BY ra.requested_at DESC
     `;
     const [rows] = await db.execute(query, [doctorId]);
+    console.log(`[DB] findByDoctorId(${doctorId}) returned ${rows.length} rows`);
+    console.log(`[DB] Query result:`, rows);
     return rows;
   }
 
@@ -89,6 +92,16 @@ class RecordAccessModel {
       WHERE patient_id = ? AND doctor_id = ? AND file_id = ? AND status = 'pending'
     `;
     const [rows] = await db.execute(query, [patientId, doctorId, fileId]);
+    return rows.length > 0;
+  }
+
+  static async hasAccessRequest(doctorId, patientId) {
+    const query = `
+      SELECT id FROM record_access 
+      WHERE doctor_id = ? AND patient_id = ? AND status IN ('pending', 'approved')
+      LIMIT 1
+    `;
+    const [rows] = await db.execute(query, [doctorId, patientId]);
     return rows.length > 0;
   }
 }

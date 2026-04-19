@@ -5,6 +5,7 @@ import useToast from '../hooks/useToast'
 import Toast from '../components/Toast'
 import BookingModal from '../components/BookingModal'
 import FileUploadModal from '../components/FileUploadModal'
+import MedicalRequests from '../components/MedicalRequests'
 import { getAllDoctorsWithSlots, searchDoctors } from '../services/doctorService'
 import { getAppointments, cancelAppointment } from '../services/appointmentService'
 import { profileService } from '../services/profileService'
@@ -30,6 +31,7 @@ const PatientDashboard = () => {
   const [activeFilter, setActiveFilter] = useState('All')
   const [bookingDoctor, setBookingDoctor] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [profileMissing, setProfileMissing] = useState(false)
   const profileFilesListRef = useRef(null)
 
   useEffect(() => {
@@ -45,17 +47,39 @@ const PatientDashboard = () => {
     try {
       const res = await profileService.getProfile()
       setProfile(res.data)
-    } catch {
-      // silently fail
+      setProfileMissing(false)
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setProfile(null)
+        setProfileMissing(true)
+        return
+      }
+
+      // silently fail for non-profile issues
     }
+  }
+
+  const handleStartBooking = (doctor) => {
+    if (profileMissing) {
+      showToast('Please complete your patient profile before booking an appointment', 'warning')
+      setTimeout(() => navigate('/patient-profile-setup'), 700)
+      return
+    }
+
+    setBookingDoctor(doctor)
   }
 
   const loadDoctors = async () => {
     setLoadingDoctors(true)
     try {
+      console.log('🔵 [loadDoctors] Starting...')
       const data = await getAllDoctorsWithSlots()
+      console.log('🟢 [loadDoctors] Received data:', data)
+      console.log('🟢 [loadDoctors] Data length:', data?.length || 0)
       setDoctors(data)
+      console.log('🟢 [loadDoctors] State updated')
     } catch (err) {
+      console.error('🔴 [loadDoctors] Error:', err)
       showToast(err.message, 'error')
     } finally {
       setLoadingDoctors(false)
@@ -112,9 +136,11 @@ const PatientDashboard = () => {
     navigate('/')
   }
 
-  const displayName = profile
-    ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim()
-    : user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Patient'
+  const displayName = profile?.name 
+    ? profile.name 
+    : user?.name 
+      ? user.name 
+      : 'Patient'
 
   const upcoming = appointments.filter(a => a.status === 'pending' || a.status === 'confirmed' || a.status === 'upcoming')
   const past = appointments.filter(a => a.status === 'completed' || a.status === 'cancelled')
@@ -199,6 +225,27 @@ const PatientDashboard = () => {
                 <p className="text-sm text-[#8a9ab0] mt-1">Search by disease, symptom, or condition</p>
               </div>
 
+              {profileMissing && (
+                <div
+                  className="mb-6 flex items-center justify-between gap-4 rounded-2xl bg-white p-4"
+                  style={{ border: '1px solid #f2d39b', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}
+                >
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#1a2a3a]">Complete your patient profile to book appointments</h3>
+                    <p className="mt-1 text-sm text-[#8a9ab0]">
+                      Add your age, gender, phone number, and blood group once to unlock booking.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/patient-profile-setup')}
+                    className="shrink-0 rounded-xl px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:-translate-y-px"
+                    style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}
+                  >
+                    Complete Profile
+                  </button>
+                </div>
+              )}
+
               {/* Search bar */}
               <div className="relative mb-4">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg">🔍</span>
@@ -251,7 +298,11 @@ const PatientDashboard = () => {
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                   {doctors.map(doctor => (
-                    <DoctorCard key={doctor.doctorId} doctor={doctor} onBook={() => setBookingDoctor(doctor)} />
+                    <DoctorCard
+                      key={doctor.doctorId}
+                      doctor={doctor}
+                      onBook={() => handleStartBooking(doctor)}
+                    />
                   ))}
                 </div>
               )}
@@ -320,10 +371,10 @@ const PatientDashboard = () => {
                     {[
                       ['Role', 'Patient'],
                       ['Email', user?.email || '—'],
-                      ['Phone', profile?.profile?.phone || profile?.phone || '—'],
-                      ['Age', profile?.profile?.age || profile?.age ? `${profile?.profile?.age || profile?.age} years` : '—'],
-                      ['Gender', profile?.profile?.gender || profile?.gender || '—'],
-                      ['Blood Group', profile?.profile?.blood_group || profile?.bloodGroup || '—']
+                      ['Phone', profile?.phone || '—'],
+                      ['Age', profile?.age ? `${profile?.age} years` : '—'],
+                      ['Gender', profile?.gender || '—'],
+                      ['Blood Group', profile?.blood_group || '—']
                     ].map(([label, val]) => (
                       <div key={label} className="py-3 px-3 rounded-lg" style={{ background: '#f8f9fc' }}>
                         <span className="block text-xs font-medium text-[#8a9ab0] uppercase tracking-wide mb-1">{label}</span>
@@ -341,6 +392,11 @@ const PatientDashboard = () => {
 
               {/* Uploaded Files Section - Full Width */}
               <ProfileFilesList ref={profileFilesListRef} profile={profile} />
+
+              {/* Medical Requests Section - Full Width */}
+              <div className="mt-8">
+                <MedicalRequests />
+              </div>
             </div>
           )}
         </main>

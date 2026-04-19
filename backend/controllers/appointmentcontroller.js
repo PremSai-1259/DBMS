@@ -4,6 +4,8 @@ const PatientProfileModel = require('../models/PatientProfile');
 const DoctorProfileModel = require('../models/DoctorProfile');
 const UserModel = require('../models/User');
 const NotificationModel = require('../models/Notification');
+const FileModel = require('../models/File');
+const RecordAccessModel = require('../models/RecordAccess');
 const { sendEmail, emailTemplates } = require('../utils/helpers');
 
 class AppointmentController {
@@ -12,30 +14,42 @@ class AppointmentController {
       const patientId = req.user.id;
       const { doctorId, slotId } = req.body;
 
+      console.log(`📞 [bookAppointment] Patient ${patientId} requesting slot ${slotId} for doctor ${doctorId}`);
+
       // Validation
-      if (!doctorId || !slotId) {
-        return res.status(400).json({ error: 'doctorId and slotId required' });
+      if (!slotId) {
+        console.log(`❌ [bookAppointment] Missing slotId`);
+        return res.status(400).json({ error: 'slotId required' });
       }
 
       // PATIENT RESTRICTION: Check if patient profile exists
       const patientProfile = await PatientProfileModel.findByUserId(patientId);
       if (!patientProfile) {
+        console.log(`❌ [bookAppointment] Patient ${patientId} profile not found`);
         return res.status(400).json({ error: 'Patient profile must be created first' });
       }
 
       // Get slot details
       const slot = await AppointmentSlotModel.getSlotById(slotId);
+      console.log(`🔍 [bookAppointment] Retrieved slot:`, slot);
       if (!slot) {
+        console.log(`❌ [bookAppointment] Slot ${slotId} not found`);
         return res.status(404).json({ error: 'Slot not found' });
       }
 
+      // Source of truth is slot.doctor_id. doctorId in request is optional.
+      const resolvedDoctorId = Number(slot.doctor_id);
+
       // Validate slot belongs to doctor
-      if (slot.doctor_id != doctorId) {
+      if (doctorId && Number(doctorId) !== resolvedDoctorId) {
+        console.log(`❌ [bookAppointment] Slot doctor_id ${slot.doctor_id} != requested doctor ${doctorId}`);
         return res.status(400).json({ error: 'Slot does not belong to this doctor' });
       }
 
       // Validate slot is available
-      if (!slot.is_active || slot.is_booked) {
+      console.log(`🔎 [bookAppointment] Checking availability: is_available=${slot.is_available}, is_booked=${slot.is_booked}`);
+      if (!slot.is_available || slot.is_booked) {
+        console.log(`❌ [bookAppointment] Slot not available (is_available=${slot.is_available}, is_booked=${slot.is_booked})`);
         return res.status(400).json({ error: 'Slot is not available' });
       }
 
@@ -46,7 +60,7 @@ class AppointmentController {
       }
 
       // Create appointment
-      const appointmentId = await AppointmentModel.create(patientId, doctorId, slotId);
+      const appointmentId = await AppointmentModel.create(patientId, resolvedDoctorId, slotId);
 
       // Mark slot as booked
       await AppointmentSlotModel.markAsBooked(slotId);
@@ -57,7 +71,7 @@ class AppointmentController {
 
       // Create notification for doctor
       const patient = await UserModel.findById(patientId);
-      await NotificationModel.create(doctorId, 'appointment_booked', 
+      await NotificationModel.create(resolvedDoctorId, 'appointment_booked', 
         `New appointment from ${patient.name}`);
 
       res.status(201).json({
@@ -156,9 +170,23 @@ class AppointmentController {
         total: appointments.length,
         appointments: appointments.map(a => ({
           id: a.id,
+          patientId: a.patient_id || null,
+          doctorId: a.doctor_id || null,
           doctorName: a.doctor_name || a.patient_name,
+          patientName: a.patient_name || null,
+          patientEmail: a.patient_email || null,
+          doctorEmail: a.doctor_email || null,
           slotDate: a.slot_date,
           slotNumber: a.slot_number,
+          slotStartTime: a.slot_start_time,
+          slotEndTime: a.slot_end_time,
+          consultationId: a.consultation_id || null,
+          reasonForVisit: a.reason_for_visit || '',
+          diagnosis: a.diagnosis || '',
+          prescription: a.prescription || '',
+          additionalNotes: a.additional_notes || '',
+          consultationCreatedAt: a.consultation_created_at || null,
+          consultationUpdatedAt: a.consultation_updated_at || null,
           status: a.status,
           cancelReason: a.cancel_reason
         }))
@@ -200,6 +228,124 @@ class AppointmentController {
       });
     } catch (error) {
       console.error('Get appointment details error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getDoctorPatientSummary(req, res) {
+    try {
+      const doctorId = req.user.id;
+      const { patientId } = req.params;
+
+      const patient = await UserModel.findByIdAndRole(patientId, 'patient');
+      if (!patient) {
+        return res.status(404).json({ error: 'Patient not found' });
+      }
+
+      const hasRelationship = await AppointmentModel.hasDoctorPatientRelationship(doctorId, patientId);
+      if (!hasRelationship) {
+        return res.status(403).json({ error: 'You can only view patients who have appointments with you' });
+      }
+
+      const patientProfile = await PatientProfileModel.findByUserId(patientId);
+      const appointmentHistory = await AppointmentModel.findHistoryByDoctorAndPatient(doctorId, patientId);
+      const documents = await FileModel.findMedicalReportsByPatientIdForDoctor(patientId, doctorId);
+
+      res.json({
+        patient: {
+          id: patient.id,
+          name: patient.name,
+          email: patient.email,
+          age: patientProfile?.age || null,
+          gender: patientProfile?.gender || null,
+          phone: patientProfile?.phone || null,
+          bloodGroup: patientProfile?.blood_group || null,
+        },
+        appointmentHistory: appointmentHistory.map(appointment => ({
+          id: appointment.id,
+          slotDate: appointment.slot_date,
+          slotNumber: appointment.slot_number,
+          slotStartTime: appointment.slot_start_time,
+          slotEndTime: appointment.slot_end_time,
+          status: appointment.status,
+          cancelReason: appointment.cancel_reason,
+          createdAt: appointment.created_at,
+        })),
+        documents: documents.map(file => ({
+          id: file.id,
+          fileName: file.file_name,
+          fileType: file.file_type,
+          uploadedAt: file.uploaded_at,
+          accessRequestId: file.access_request_id,
+          accessStatus: file.access_status || null,
+          accessRequestedAt: file.access_requested_at || null,
+          accessExpiresAt: file.access_expires_at || null,
+        })),
+      });
+    } catch (error) {
+      console.error('Get doctor patient summary error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getDoctorProfileWithHistory(req, res) {
+    try {
+      const patientId = req.user.id;
+      const { doctorId } = req.params;
+
+      // Get doctor info
+      const doctor = await UserModel.findByIdAndRole(doctorId, 'doctor');
+      if (!doctor) {
+        return res.status(404).json({ error: 'Doctor not found' });
+      }
+
+      // Get doctor profile
+      const doctorProfile = await DoctorProfileModel.findByUserId(doctorId);
+      if (!doctorProfile) {
+        return res.status(404).json({ error: 'Doctor profile not found' });
+      }
+
+      // Verify patient has either:
+      // 1. An appointment with this doctor, OR
+      // 2. A medical request from this doctor
+      const hasAppointment = await AppointmentModel.hasDoctorPatientRelationship(doctorId, patientId);
+      const hasAccessRequest = await RecordAccessModel.hasAccessRequest(doctorId, patientId);
+      
+      if (!hasAppointment && !hasAccessRequest) {
+        return res.status(403).json({ error: 'You can only view doctors who have appointments or requests with you' });
+      }
+
+      // Get appointment history (if any)
+      let appointmentHistory = [];
+      if (hasAppointment) {
+        appointmentHistory = await AppointmentModel.findHistoryByDoctorAndPatient(doctorId, patientId);
+      }
+
+      res.json({
+        doctor: {
+          id: doctor.id,
+          name: doctor.name,
+          email: doctor.email,
+          specialization: doctorProfile.specialization,
+          experience: doctorProfile.experience,
+          hospitalName: doctorProfile.hospital_name,
+          address: doctorProfile.address,
+          isVerified: doctorProfile.is_verified,
+          rating: doctorProfile.average_rating
+        },
+        appointmentHistory: appointmentHistory.map(apt => ({
+          id: apt.id,
+          slotDate: apt.slot_date,
+          slotNumber: apt.slot_number,
+          slotStartTime: apt.slot_start_time,
+          slotEndTime: apt.slot_end_time,
+          status: apt.status,
+          cancelReason: apt.cancel_reason,
+          createdAt: apt.created_at
+        }))
+      });
+    } catch (error) {
+      console.error('Get doctor profile with history error:', error);
       res.status(500).json({ error: error.message });
     }
   }

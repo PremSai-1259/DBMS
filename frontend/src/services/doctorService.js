@@ -10,85 +10,60 @@ import api from './api'
  */
 
 /**
- * Fetch all doctors with their available slots
- * @returns {Promise<Array>} Array of doctors with slots
- * Format: [{doctorId, name, specialization, hospitalName, slots: []}]
+ * Fetch all approved doctors for patient portal
+ * @returns {Promise<Array>} Array of approved doctors with their info
+ * Format: [{doctorId, doctorName, specialization, hospitalName, experience, email, rating, address}]
  * @throws Error if API call fails
  */
 export const getAllDoctorsWithSlots = async () => {
   try {
-    // Fetch available slots
-    const response = await api.get('/slots/available')
-    const slots = response.data
+    // Fetch approved doctors from backend
+    const response = await api.get('/doctor-approvals/doctors/approved')
+    const doctors = response.data
 
     // Validate response
-    if (!Array.isArray(slots)) {
-      throw new Error('Invalid response format: slots should be an array')
+    if (!Array.isArray(doctors)) {
+      throw new Error('Invalid response format: doctors should be an array')
     }
 
-    if (slots.length === 0) {
+    if (doctors.length === 0) {
+      console.log('No approved doctors found')
       return []
     }
 
-    // Group slots by doctorId and extract doctor details
-    const doctorMap = new Map()
-
-    slots.forEach((slot) => {
-      const {
-        doctorId,
-        doctorName,
-        specialization,
-        hospitalName,
-      } = slot
-
-      // Only process slots with complete doctor info
-      if (!doctorId || !doctorName) {
-        console.warn('Slot missing doctor information:', slot)
-        return
-      }
-
-      // Check if doctor already exists in map
-      if (!doctorMap.has(doctorId)) {
-        // Create new doctor entry
-        doctorMap.set(doctorId, {
-          doctorId,
-          name: doctorName,
-          specialization: specialization || 'N/A',
-          hospitalName: hospitalName || 'N/A',
-          slots: [],
-        })
-      }
-
-      // Add slot to doctor's slots array
-      const doctor = doctorMap.get(doctorId)
-      doctor.slots.push({
-        slotId: slot.slotId || slot.id,
-        date: slot.date,
-        time: slot.time,
-        status: slot.status || 'available',
-      })
-    })
-
-    // Convert map to array and sort
-    const doctors = Array.from(doctorMap.values())
+    // Transform doctor data to expected format
+    const formattedDoctors = doctors.map(doctor => ({
+      doctorId: doctor.doctorId,
+      id: doctor.doctorId,
+      name: doctor.doctorName,
+      doctorName: doctor.doctorName,
+      specialization: doctor.specialization || 'General Practice',
+      hospitalName: doctor.hospitalName || 'N/A',
+      experience: doctor.experience || 0,
+      email: doctor.email,
+      rating: doctor.rating || 0,
+      address: doctor.address,
+      isVerified: doctor.isVerified,
+      slots: [] // Will be populated if needed separately
+    }))
 
     // Sort by doctor name
-    doctors.sort((a, b) => a.name.localeCompare(b.name))
+    formattedDoctors.sort((a, b) => a.name.localeCompare(b.name))
 
-    console.log(`Loaded ${doctors.length} doctors with ${slots.length} available slots`)
+    console.log(`✅ Loaded ${formattedDoctors.length} approved doctors`)
 
-    return doctors
+    return formattedDoctors
   } catch (error) {
     // Handle API errors
     if (error.response) {
-      const message = error.response.data?.message || 'Failed to fetch doctors'
-      console.error('API Error:', message)
+      const message = error.response.data?.message || error.response.data?.error || 'Failed to fetch doctors'
+      console.error('🔴 API Error:', message)
       throw new Error(message)
     } else if (error.request) {
-      console.error('Network Error: No response from server')
+      console.error('🔴 Network Error: No response from server')
       throw new Error('No response from server. Please check your connection.')
     } else {
-      console.error('Error:', error.message)
+      console.error('🔴 Error:', error.message)
       throw error
     }
   }

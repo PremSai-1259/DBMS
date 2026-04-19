@@ -4,6 +4,10 @@ export const slotService = {
   // Get available slots (filters optional: doctor, date, etc.)
   getAvailableSlots: (filters = {}) =>
     apiClient.get('/slots/available', { params: filters }),
+
+  // Get all future available slots for a specific doctor
+  getDoctorAvailableSlots: (doctorId) =>
+    apiClient.get(`/slots/doctor/${doctorId}`),
   
   // Get all slots
   getAllSlots: () =>

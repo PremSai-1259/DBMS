@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { bookAppointment } from '../services/appointmentService'
 import useToast from '../hooks/useToast'
 import Toast from './Toast'
@@ -6,9 +7,72 @@ import Toast from './Toast'
 const BookingModal = ({ doctor, onClose, onBooked }) => {
   const [selectedSlot, setSelectedSlot] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [slots, setSlots] = useState([])
+  const [slotsLoading, setSlotsLoading] = useState(true)
   const { toast, showToast } = useToast()
+  const navigate = useNavigate()
 
   if (!doctor) return null
+
+  // Fetch available slots for this doctor
+  useEffect(() => {
+    const fetchSlots = async () => {
+      try {
+        setSlotsLoading(true)
+        console.log('🔵 [BookingModal] Fetching slots for doctor:', doctor.doctorId)
+        
+        // Fetch slots for this specific doctor
+        const response = await fetch(`http://localhost:5000/api/slots/doctor/${doctor.doctorId}`)
+        const fetchedSlots = await response.json()
+        
+        console.log('🟢 [BookingModal] Fetched slots:', fetchedSlots)
+        
+        // Get current date and time
+        const now = new Date()
+        const currentDate = now.toISOString().split('T')[0] // YYYY-MM-DD
+        const currentTime = now.toTimeString().slice(0, 8) // HH:MM:SS
+        
+        // Format and filter slots - only include future slots
+        const formattedSlots = (fetchedSlots || [])
+          .map(slot => {
+            // Parse slot date
+            const slotDate = slot.slotDate instanceof Date 
+              ? slot.slotDate.toISOString().split('T')[0]
+              : slot.slotDate
+            
+            // Format date for display (e.g., "Apr 19, 2026")
+            const dateObj = new Date(slotDate + 'T00:00:00Z')
+            const formattedDate = dateObj.toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric' 
+            })
+            
+            return {
+              slotId: slot.id,
+              time: `${slot.slotStartTime} - ${slot.slotEndTime}`,
+              date: slotDate,
+              displayDate: formattedDate,
+              fullSlot: slot,
+              isExpired: slotDate < currentDate || 
+                        (slotDate === currentDate && slot.slotStartTime <= currentTime)
+            }
+          })
+          .filter(slot => !slot.isExpired) // Remove expired slots
+        
+        console.log(`🟢 [BookingModal] Formatted ${formattedSlots.length} future slots for doctor ${doctor.doctorId}`)
+        setSlots(formattedSlots)
+      } catch (err) {
+        console.error('🔴 [BookingModal] Error fetching slots:', err)
+        showToast('Failed to load available slots', 'error')
+        setSlots([])
+      } finally {
+        setSlotsLoading(false)
+      }
+    }
+
+    fetchSlots()
+  }, [doctor.doctorId, showToast])
 
   const handleConfirm = async () => {
     if (!selectedSlot) {
@@ -24,6 +88,15 @@ const BookingModal = ({ doctor, onClose, onBooked }) => {
         onClose()
       }, 800)
     } catch (err) {
+      if (err.message?.includes('Patient profile must be created first')) {
+        showToast('Please complete your patient profile before booking an appointment', 'warning')
+        setTimeout(() => {
+          onClose()
+          navigate('/patient-profile-setup')
+        }, 700)
+        return
+      }
+
       showToast(err.message, 'error')
     } finally {
       setLoading(false)
@@ -57,12 +130,16 @@ const BookingModal = ({ doctor, onClose, onBooked }) => {
 
         <div className="text-xs font-bold text-text-mid uppercase tracking-wider mb-3">Choose a Time Slot</div>
 
-        {doctor.slots && doctor.slots.length > 0 ? (
+        {slotsLoading ? (
+          <div className="flex justify-center py-6 mb-6">
+            <div className="w-6 h-6 rounded-full border-2 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin" />
+          </div>
+        ) : slots && slots.length > 0 ? (
           <div className="grid grid-cols-3 gap-2 mb-6">
-            {doctor.slots.map((slot) => (
+            {slots.map((slot) => (
               <button key={slot.slotId}
                 onClick={() => setSelectedSlot(slot)}
-                className="py-3 px-2 rounded-xl text-xs font-medium transition-all duration-200 text-center border-1.5"
+                className="py-3 px-2 rounded-xl text-xs font-medium transition-all duration-200 text-center border-1.5 flex flex-col items-center justify-center"
                 style={selectedSlot?.slotId === slot.slotId
                   ? { 
                       background: '#2ecc8a', 
@@ -76,12 +153,13 @@ const BookingModal = ({ doctor, onClose, onBooked }) => {
                       color: '#1a9e6a', 
                       border: '1.5px solid rgba(46, 204, 138, 0.2)'
                     }}>
-                {slot.time || slot.date}
+                <div className="text-xs font-semibold">{slot.time}</div>
+                <div className="text-xs opacity-75 mt-0.5">{slot.displayDate}</div>
               </button>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-text-light text-center py-6 mb-6">No slots available</p>
+          <p className="text-sm text-text-light text-center py-6 mb-6">No available slots</p>
         )}
 
         <div className="flex gap-3">

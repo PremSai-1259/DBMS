@@ -39,6 +39,40 @@ class FileModel {
     return rows;
   }
 
+  static async findMedicalReportsByPatientIdForDoctor(patientId, doctorId) {
+    const query = `
+      SELECT
+        f.id,
+        f.user_id,
+        f.file_name,
+        f.file_type,
+        f.uploaded_at,
+        latest_access.id AS access_request_id,
+        latest_access.status AS access_status,
+        latest_access.requested_at AS access_requested_at,
+        latest_access.expires_at AS access_expires_at
+      FROM files f
+      LEFT JOIN (
+        SELECT ra.*
+        FROM record_access ra
+        INNER JOIN (
+          SELECT MAX(id) AS latest_id
+          FROM record_access
+          WHERE doctor_id = ?
+          GROUP BY file_id
+        ) latest ON latest.latest_id = ra.id
+      ) latest_access
+        ON latest_access.file_id = f.id
+       AND latest_access.patient_id = f.user_id
+       AND latest_access.doctor_id = ?
+      WHERE f.user_id = ?
+        AND f.file_type = 'medical_report'
+      ORDER BY f.uploaded_at DESC
+    `;
+    const [rows] = await db.execute(query, [doctorId, doctorId, patientId]);
+    return rows;
+  }
+
   static async delete(id) {
     const query = 'DELETE FROM files WHERE id = ?';
     const [result] = await db.execute(query, [id]);

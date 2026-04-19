@@ -19,10 +19,25 @@ class AppointmentModel {
 
   static async findByPatientId(patientId) {
     const query = `
-      SELECT a.*, s.slot_date, s.slot_number, u.name as doctor_name
+      SELECT
+        a.*,
+        s.slot_date,
+        s.slot_number,
+        s.slot_start_time,
+        s.slot_end_time,
+        u.name as doctor_name,
+        u.email as doctor_email,
+        cn.id AS consultation_id,
+        cn.reason_for_visit,
+        cn.diagnosis,
+        cn.prescription,
+        cn.additional_notes,
+        cn.created_at AS consultation_created_at,
+        cn.updated_at AS consultation_updated_at
       FROM appointments a
       JOIN appointment_slots s ON a.slot_id = s.id
       JOIN users u ON a.doctor_id = u.id
+      LEFT JOIN consultation_notes cn ON cn.appointment_id = a.id
       WHERE a.patient_id = ?
       ORDER BY s.slot_date DESC
     `;
@@ -32,10 +47,25 @@ class AppointmentModel {
 
   static async findByDoctorId(doctorId) {
     const query = `
-      SELECT a.*, s.slot_date, s.slot_number, u.name as patient_name
+      SELECT
+        a.*,
+        s.slot_date,
+        s.slot_number,
+        s.slot_start_time,
+        s.slot_end_time,
+        u.name as patient_name,
+        u.email as patient_email,
+        cn.id AS consultation_id,
+        cn.reason_for_visit,
+        cn.diagnosis,
+        cn.prescription,
+        cn.additional_notes,
+        cn.created_at AS consultation_created_at,
+        cn.updated_at AS consultation_updated_at
       FROM appointments a
       JOIN appointment_slots s ON a.slot_id = s.id
       JOIN users u ON a.patient_id = u.id
+      LEFT JOIN consultation_notes cn ON cn.appointment_id = a.id
       WHERE a.doctor_id = ?
       ORDER BY s.slot_date DESC
     `;
@@ -84,6 +114,34 @@ class AppointmentModel {
     `;
     const [rows] = await db.execute(query, [patientId, slotId]);
     return rows.length > 0;
+  }
+
+  static async hasDoctorPatientRelationship(doctorId, patientId) {
+    const query = `
+      SELECT id
+      FROM appointments
+      WHERE doctor_id = ? AND patient_id = ?
+      LIMIT 1
+    `;
+    const [rows] = await db.execute(query, [doctorId, patientId]);
+    return rows.length > 0;
+  }
+
+  static async findHistoryByDoctorAndPatient(doctorId, patientId) {
+    const query = `
+      SELECT
+        a.*,
+        s.slot_date,
+        s.slot_number,
+        s.slot_start_time,
+        s.slot_end_time
+      FROM appointments a
+      JOIN appointment_slots s ON a.slot_id = s.id
+      WHERE a.doctor_id = ? AND a.patient_id = ?
+      ORDER BY s.slot_date DESC, s.slot_start_time DESC
+    `;
+    const [rows] = await db.execute(query, [doctorId, patientId]);
+    return rows;
   }
 }
 

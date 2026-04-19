@@ -55,27 +55,43 @@ class AccessController {
       const userId = req.user.id;
       const userRole = req.user.role;
 
+      console.log(`\n[ACCESS-CONTROLLER] userId=${userId}, role=${userRole}`);
+
       let requests;
 
       if (userRole === 'patient') {
         // Requests TO patient for their files
         requests = await RecordAccessModel.findByPatientId(userId);
+        console.log(`[ACCESS-CONTROLLER] Patient: calling findByPatientId(${userId})`);
       } else if (userRole === 'doctor') {
         // Requests FROM doctor for patient files
+        console.log(`[ACCESS-CONTROLLER] Doctor: calling findByDoctorId(${userId})`);
         requests = await RecordAccessModel.findByDoctorId(userId);
       } else {
         return res.status(403).json({ error: 'Invalid role' });
       }
 
+      console.log(`[ACCESS-CONTROLLER] Found ${requests.length} requests`);
+      console.log(`[ACCESS-CONTROLLER] Raw requests:`, requests);
+
+      const mappedRequests = requests.map(r => ({
+        id: r.id,
+        doctorId: r.doctor_id,
+        doctorName: r.doctor_name,
+        patientId: r.patient_id,
+        patientName: r.patient_name,
+        fileName: r.file_name,
+        status: r.status,
+        requestedAt: r.requested_at,
+        updatedAt: r.updated_at,
+        expiresAt: r.expires_at
+      }));
+
+      console.log(`[ACCESS-CONTROLLER] Mapped requests:`, mappedRequests);
+
       res.json({
-        total: requests.length,
-        requests: requests.map(r => ({
-          id: r.id,
-          personName: r.doctor_name || r.patient_name,
-          fileName: r.file_name,
-          status: r.status,
-          requestedAt: r.requested_at
-        }))
+        total: mappedRequests.length,
+        requests: mappedRequests
       });
     } catch (error) {
       console.error('Get access requests error:', error);

@@ -4,6 +4,9 @@ const DoctorApprovalController = require('../controllers/doctorApprovalControlle
 const authMiddleware = require('../middleware/authmiddleware');
 const roleMiddleware = require('../middleware/rolemiddleware');
 
+// PUBLIC route - Get all approved doctors for patient portal (no auth required)
+router.get('/doctors/approved', DoctorApprovalController.getAllApprovedDoctors);
+
 // Doctor routes
 // GET /doctor-approvals/status - Doctor checks their own approval status
 router.get('/status', authMiddleware, roleMiddleware(['doctor']), 

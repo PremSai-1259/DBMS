@@ -24,15 +24,20 @@ class ConsultationController {
         return res.status(403).json({ error: 'Only the assigned doctor can write notes' });
       }
 
-      // Check if appointment is completed
-      if (appointment.status !== 'completed') {
-        return res.status(400).json({ error: 'Appointment must be completed first' });
+      // Only confirmed/completed appointments can receive consultation notes.
+      if (!['confirmed', 'completed'].includes(appointment.status)) {
+        return res.status(400).json({ error: 'Only confirmed or completed appointments can have consultation notes' });
       }
 
       // Check if consultation notes already exist
       const existing = await ConsultationNoteModel.findByAppointmentId(appointmentId);
       if (existing) {
         return res.status(409).json({ error: 'Consultation notes already exist for this appointment' });
+      }
+
+      // Mark appointment as completed the first time notes are written.
+      if (appointment.status !== 'completed') {
+        await AppointmentModel.markCompleted(appointmentId);
       }
 
       // Create notes

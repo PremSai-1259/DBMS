@@ -15,6 +15,14 @@ router.put('/cancel/:appointmentId', authMiddleware, roleMiddleware(['doctor']),
 // GET /appointments
 router.get('/', authMiddleware, AppointmentController.getAppointments);
 
+// GET /appointments/patient/:patientId/summary
+router.get('/patient/:patientId/summary', authMiddleware, roleMiddleware(['doctor']),
+  AppointmentController.getDoctorPatientSummary);
+
+// GET /appointments/doctor/:doctorId/profile
+router.get('/doctor/:doctorId/profile', authMiddleware, roleMiddleware(['patient']),
+  AppointmentController.getDoctorProfileWithHistory);
+
 // GET /appointments/:id
 router.get('/:appointmentId', authMiddleware, AppointmentController.getAppointmentDetails);
 

@@ -54,6 +54,30 @@ export const profileService = {
   getFileInfo: (fileId) =>
     api.get(`/files/${fileId}/info`),
 
+  // Doctor: get patient profile summary from shared appointments
+  getDoctorPatientSummary: (patientId) =>
+    api.get(`/appointments/patient/${patientId}/summary`),
+
+  // Doctor: request access to a patient's uploaded medical report
+  requestMedicalReportAccess: (patientId, fileId) =>
+    api.post('/access/request', { patientId, fileId }),
+
+  // Patient: Get medical report requests from doctors
+  getMedicalRequests: () =>
+    api.get('/access/requests'),
+
+  // Patient: Respond to a medical report request (approve or reject)
+  respondToMedicalRequest: (requestId, status) =>
+    api.put(`/access/respond/${requestId}`, { status }),
+
+  // Patient: Revoke previously approved access
+  revokeMedicalAccess: (requestId) =>
+    api.put(`/access/revoke/${requestId}`),
+
+  // Patient: Get doctor profile with appointment history
+  getDoctorProfileWithHistory: (doctorId) =>
+    api.get(`/appointments/doctor/${doctorId}/profile`),
+
   // Download file with auth headers
   downloadFile: async (fileId, fileName) => {
     try {

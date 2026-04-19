@@ -307,6 +307,130 @@ class AppointmentSlot {
 
     return weekSchedule;
   }
+
+  /**
+   * Get all available slots with doctor information
+   * Used by patient portal to show list of doctors with available slots
+   */
+  static async getAllAvailableSlotsWithDoctors() {
+    const query = `
+      SELECT 
+        s.id,
+        s.doctor_id as doctorId,
+        u.name as doctorName,
+        dp.specialization,
+        dp.hospital_name as hospitalName,
+        s.slot_date as slotDate,
+        s.slot_number as slotNumber,
+        s.slot_start_time as slotStartTime,
+        s.slot_end_time as slotEndTime,
+        s.is_available as isAvailable,
+        s.is_booked as isBooked
+      FROM appointment_slots s
+      INNER JOIN doctor_profiles dp ON s.doctor_id = dp.user_id
+      INNER JOIN users u ON dp.user_id = u.id
+      WHERE s.is_available = TRUE 
+        AND s.is_booked = FALSE
+        AND s.slot_date >= CURDATE()
+      ORDER BY s.slot_date ASC, s.slot_number ASC
+    `;
+
+    try {
+      const [slots] = await db.execute(query);
+      console.log(`✅ Retrieved ${slots.length} available slots with doctor info`);
+      return slots;
+    } catch (error) {
+      console.error('❌ Error fetching available slots with doctors:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all available future slots for a specific doctor
+   * @param {number} doctorId - Doctor user ID
+   * @returns {Promise<Array>} Array of available slots
+   */
+  static async getAvailableSlotsForDoctor(doctorId) {
+    const query = `
+      SELECT
+        s.id,
+        s.doctor_id as doctorId,
+        s.slot_date as slotDate,
+        s.slot_number as slotNumber,
+        s.slot_start_time as slotStartTime,
+        s.slot_end_time as slotEndTime,
+        s.is_available as isAvailable,
+        s.is_booked as isBooked
+      FROM appointment_slots s
+      WHERE s.doctor_id = ?
+        AND s.is_available = TRUE
+        AND s.is_booked = FALSE
+        AND s.slot_date >= CURDATE()
+      ORDER BY s.slot_date ASC, s.slot_number ASC
+    `;
+
+    try {
+      const [slots] = await db.execute(query, [doctorId]);
+      console.log(`✅ Retrieved ${slots.length} available slots for doctor ${doctorId}`);
+      return slots;
+    } catch (error) {
+      console.error(`❌ Error fetching slots for doctor ${doctorId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific slot by ID
+   * @param {number} slotId - Slot ID
+   * @returns {Promise<Object>} Slot details or null if not found
+   */
+  static async getSlotById(slotId) {
+    const query = `
+      SELECT 
+        s.id,
+        s.doctor_id as doctor_id,
+        s.slot_date as slot_date,
+        s.slot_number as slot_number,
+        s.slot_start_time as slot_start_time,
+        s.slot_end_time as slot_end_time,
+        s.is_available as is_available,
+        s.is_booked as is_booked
+      FROM appointment_slots s
+      WHERE s.id = ?
+    `;
+
+    try {
+      const [slots] = await db.execute(query, [slotId]);
+      if (slots.length === 0) return null;
+      console.log(`✅ Retrieved slot ${slotId}:`, slots[0]);
+      return slots[0];
+    } catch (error) {
+      console.error(`❌ Error fetching slot ${slotId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark a slot as booked
+   * @param {number} slotId - Slot ID
+   * @returns {Promise<boolean>} True if successfully booked
+   */
+  static async markAsBooked(slotId) {
+    const query = `
+      UPDATE appointment_slots 
+      SET is_booked = TRUE, is_available = FALSE
+      WHERE id = ?
+    `;
+
+    try {
+      const result = await db.execute(query, [slotId]);
+      console.log(`✅ Slot ${slotId} marked as booked`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error marking slot ${slotId} as booked:`, error);
+      throw error;
+    }
+  }
 }
 
 module.exports = AppointmentSlot;

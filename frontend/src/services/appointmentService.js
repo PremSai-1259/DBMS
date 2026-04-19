@@ -1,5 +1,23 @@
 import api from './api'
 
+const formatTimeRange = (slotStartTime, slotEndTime) => {
+  if (!slotStartTime || !slotEndTime) return null
+
+  const formatSingleTime = (timeValue) => {
+    const [hours = '00', minutes = '00'] = String(timeValue).split(':')
+    const date = new Date()
+    date.setHours(Number(hours), Number(minutes), 0, 0)
+
+    return date.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    })
+  }
+
+  return `${formatSingleTime(slotStartTime)} - ${formatSingleTime(slotEndTime)}`
+}
+
 /**
  * Appointment Service
  * Handles all appointment-related API calls
@@ -23,20 +41,24 @@ export const bookAppointment = async (data) => {
       throw new Error('Slot ID is required to book an appointment')
     }
 
-    // Make API request
-    const response = await api.post('/appointments/book', {
+    const requestBody = {
       slotId: data.slotId,
       doctorId: data.doctorId || null,
-    })
+    }
+    
+    console.log('📤 [bookAppointment] Sending request:', requestBody)
 
-    console.log('Appointment booked successfully:', response.data)
+    // Make API request
+    const response = await api.post('/appointments/book', requestBody)
+
+    console.log('✅ Appointment booked successfully:', response.data)
 
     return response.data
   } catch (error) {
     // Handle different error scenarios
     if (error.response) {
       const message =
-        error.response.data?.message || 'Failed to book appointment'
+        error.response.data?.message || error.response.data?.error || 'Failed to book appointment'
       const status = error.response.status
 
       if (status === 400) {
@@ -85,6 +107,40 @@ export const getAppointments = async (filters = {}) => {
     if (!Array.isArray(appointments)) {
       appointments = response.data?.appointments || []
     }
+
+    appointments = appointments.map((appointment) => {
+      const slotDate = appointment.slotDate || appointment.date || appointment.slot?.date || null
+      const slotStartTime = appointment.slotStartTime || appointment.slot?.startTime || null
+      const slotEndTime = appointment.slotEndTime || appointment.slot?.endTime || null
+      const time = appointment.time || appointment.slot?.time || formatTimeRange(slotStartTime, slotEndTime)
+
+      return {
+        ...appointment,
+        date: slotDate,
+        time,
+        patientName: appointment.patientName || appointment.doctorName || 'Patient',
+        doctorName: appointment.doctorName || appointment.patientName || 'Doctor',
+        consultation: appointment.consultationId
+          ? {
+              id: appointment.consultationId,
+              reasonForVisit: appointment.reasonForVisit || '',
+              diagnosis: appointment.diagnosis || '',
+              prescription: appointment.prescription || '',
+              additionalNotes: appointment.additionalNotes || '',
+              createdAt: appointment.consultationCreatedAt || null,
+              updatedAt: appointment.consultationUpdatedAt || null,
+            }
+          : null,
+        slot: {
+          ...(appointment.slot || {}),
+          date: slotDate,
+          time,
+          startTime: slotStartTime,
+          endTime: slotEndTime,
+          slotNumber: appointment.slotNumber || appointment.slot?.slotNumber || null,
+        },
+      }
+    })
 
     console.log(`Loaded ${appointments.length} appointments`)
 
@@ -216,15 +272,16 @@ export const rescheduleAppointment = async (appointmentId) => {
  */
 export const addConsultationNote = async (appointmentId, noteData) => {
   try {
-    if (!appointmentId || !noteData || !noteData.notes) {
-      throw new Error('Appointment ID and consultation notes are required')
+    if (!appointmentId || !noteData) {
+      throw new Error('Appointment ID and consultation details are required')
     }
 
-    // Use /consultation endpoint with appointmentId
     const response = await api.post('/consultation', {
       appointmentId,
-      notes: noteData.notes,
+      reasonForVisit: noteData.reasonForVisit || '',
+      diagnosis: noteData.diagnosis || '',
       prescription: noteData.prescription || '',
+      additionalNotes: noteData.additionalNotes || '',
     })
 
     console.log('Consultation note added:', response.data)
@@ -243,6 +300,32 @@ export const addConsultationNote = async (appointmentId, noteData) => {
         throw new Error('Only doctors can add consultation notes')
       }
 
+      throw new Error(message)
+    } else if (error.request) {
+      throw new Error('Unable to reach server. Please check your connection.')
+    } else {
+      throw error
+    }
+  }
+}
+
+export const updateConsultationNote = async (consultationId, noteData) => {
+  try {
+    if (!consultationId || !noteData) {
+      throw new Error('Consultation ID and consultation details are required')
+    }
+
+    const response = await api.put(`/consultation/${consultationId}`, {
+      reasonForVisit: noteData.reasonForVisit || '',
+      diagnosis: noteData.diagnosis || '',
+      prescription: noteData.prescription || '',
+      additionalNotes: noteData.additionalNotes || '',
+    })
+
+    return response.data
+  } catch (error) {
+    if (error.response) {
+      const message = error.response.data?.message || error.response.data?.error || 'Failed to update consultation note'
       throw new Error(message)
     } else if (error.request) {
       throw new Error('Unable to reach server. Please check your connection.')
@@ -279,6 +362,7 @@ export default {
   cancelAppointment,
   rescheduleAppointment,
   addConsultationNote,
+  updateConsultationNote,
   getUserAppointments,
   getAppointmentStats,
 }
