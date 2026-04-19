@@ -12,7 +12,7 @@ const SignUpPage = () => {
 
   const [role, setRole] = useState('patient')
   const [form, setForm] = useState({
-    firstName: '', lastName: '', email: '', password: '', phone: '',
+    firstName: '', lastName: '', email: '', password: '',
   })
   const [loading, setLoading] = useState(false)
 
@@ -129,12 +129,11 @@ const SignUpPage = () => {
               ))}
             </div>
             {[['email', 'Email Address', 'email', 'you@example.com'],
-              ['phone', 'Phone Number', 'tel', '+91 00000 00000'],
               ['password', 'Password', 'password', '••••••••']].map(([k, label, type, ph]) => (
               <div key={k}>
                 <label className="block text-xs font-medium text-[#4a5a6a] mb-2 uppercase tracking-wide">{label}</label>
                 <input type={type} value={form[k]} onChange={set(k)} placeholder={ph}
-                  required={k !== 'phone'}
+                  required
                   className="w-full px-4 py-3 rounded-xl text-sm text-[#1a2a3a] outline-none transition-all duration-200"
                   style={inputStyle} onFocus={focusStyle} onBlur={blurStyle} />
               </div>

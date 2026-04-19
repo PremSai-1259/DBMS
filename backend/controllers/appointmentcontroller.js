@@ -109,6 +109,10 @@ class AppointmentController {
 
       const patient = await UserModel.findById(appointment.patient_id);
       const doctor = await UserModel.findById(appointment.doctor_id);
+      const patientName = patient?.name || 'Patient';
+      const patientEmail = patient?.email || null;
+      const doctorName = doctor?.name || 'Doctor';
+      const doctorEmail = doctor?.email || null;
 
       if (userRole === 'doctor') {
         // Verify doctor ownership
@@ -128,13 +132,21 @@ class AppointmentController {
         // Mark the slot unavailable so nobody else can book the cancelled time
         await AppointmentSlotModel.markAsUnavailable(appointment.slot_id);
 
-        // Send email to patient
-        const emailTemplate = emailTemplates.appointmentCancelled(patient.name, doctor.name, reasonText);
-        await sendEmail(patient.email, emailTemplate.subject, emailTemplate.html);
+        // Side effects should not block cancellation success
+        try {
+          if (patientEmail) {
+            const emailTemplate = emailTemplates.appointmentCancelled(patientName, doctorName, reasonText);
+            await sendEmail(patientEmail, emailTemplate.subject, emailTemplate.html);
+          }
 
-        // Create notification for patient
-        await NotificationModel.create(appointment.patient_id, 'appointment_cancelled', 
-          `Your appointment has been cancelled. Reason: ${reasonText}`);
+          await NotificationModel.create(
+            appointment.patient_id,
+            'appointment_cancelled',
+            `Your appointment has been cancelled. Reason: ${reasonText}`
+          );
+        } catch (sideEffectError) {
+          console.warn('Doctor cancel side effect failed:', sideEffectError);
+        }
 
         return res.json({
           message: 'Appointment cancelled successfully',
@@ -159,13 +171,20 @@ class AppointmentController {
         await AppointmentSlotModel.markAsAvailable(appointment.slot_id);
 
         // Notify the doctor
-        const emailTemplate = emailTemplates.appointmentCancelledByPatient(patient.name, doctor.name, reasonText);
-        if (doctor?.email) {
-          await sendEmail(doctor.email, emailTemplate.subject, emailTemplate.html);
-        }
+        try {
+          if (doctorEmail) {
+            const emailTemplate = emailTemplates.appointmentCancelledByPatient(patientName, doctorName, reasonText);
+            await sendEmail(doctorEmail, emailTemplate.subject, emailTemplate.html);
+          }
 
-        await NotificationModel.create(appointment.doctor_id, 'appointment_cancelled_by_patient',
-          `${patient.name} cancelled the appointment. Reason: ${reasonText}`);
+          await NotificationModel.create(
+            appointment.doctor_id,
+            'appointment_cancelled_by_patient',
+            `${patientName} cancelled the appointment. Reason: ${reasonText}`
+          );
+        } catch (sideEffectError) {
+          console.warn('Patient cancel side effect failed:', sideEffectError);
+        }
 
         return res.json({
           message: 'Appointment cancelled successfully',

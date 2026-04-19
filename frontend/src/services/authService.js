@@ -87,7 +87,6 @@ export const login = async (email, password) => {
  * @param {string} data.email - Email address
  * @param {string} data.password - Password
  * @param {string} data.role - User role (patient/doctor)
- * @param {string} data.phone - Phone number (optional)
  * @returns {Promise} {user, token}
  * @throws Error with message if signup fails
  */
@@ -118,7 +117,6 @@ export const signup = async (data) => {
       email,
       password,
       role,
-      phone: data.phone || '',
     })
 
     // Extract data from response

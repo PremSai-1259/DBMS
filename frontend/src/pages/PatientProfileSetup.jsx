@@ -18,7 +18,10 @@ const PatientProfileSetup = () => {
   })
   const [loading, setLoading] = useState(false)
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+  const set = (k) => (e) => {
+    const value = k === 'phone' ? e.target.value.replace(/\D/g, '') : e.target.value
+    setForm(f => ({ ...f, [k]: value }))
+  }
 
   const inputStyle = {
     border: '1.5px solid #d0daea',
@@ -145,6 +148,8 @@ const PatientProfileSetup = () => {
                 onBlur={blurStyle}
                 placeholder="Enter 10-digit phone number"
                 maxLength="10"
+                inputMode="numeric"
+                pattern="[0-9]{10}"
                 className="w-full px-4 py-3 rounded-lg transition-all duration-200 outline-none"
                 style={inputStyle}
               />

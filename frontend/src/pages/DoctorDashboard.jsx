@@ -167,6 +167,7 @@ const DoctorDashboard = () => {
     closeCancelModal(true)
     try {
       await doctorCancelAppointment(cancelAppointmentTarget.id, cancelReason)
+      setAppointments((prev) => prev.filter((apt) => apt.id !== cancelAppointmentTarget.id))
       showToast('Appointment cancelled and patient notified', 'success')
       await loadAll()
     } catch (err) {

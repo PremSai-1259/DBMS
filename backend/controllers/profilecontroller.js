@@ -2,6 +2,9 @@ const PatientProfileModel = require('../models/PatientProfile');
 const DoctorProfileModel = require('../models/DoctorProfile');
 const UserModel = require('../models/User');
 
+const normalizePhone = (value) => String(value || '').trim();
+const isValidPhoneNumber = (value) => /^\d{10}$/.test(normalizePhone(value));
+
 /**
  * ⚠️  PROFILE DATA STORAGE POLICY
  * 
@@ -23,10 +26,15 @@ class ProfileController {
     try {
       const { age, gender, phone, bloodGroup } = req.body;
       const userId = req.user.id;
+      const phoneNumber = normalizePhone(phone);
 
       // Validation
-      if (!age || !gender || !phone || !bloodGroup) {
+      if (!age || !gender || !phoneNumber || !bloodGroup) {
         return res.status(400).json({ error: 'Missing required fields: age, gender, phone, bloodGroup' });
+      }
+
+      if (!isValidPhoneNumber(phoneNumber)) {
+        return res.status(400).json({ error: 'Phone number must be exactly 10 digits' });
       }
 
       // Check if profile exists
@@ -36,12 +44,12 @@ class ProfileController {
       }
 
       // Create profile
-      const profileId = await PatientProfileModel.create(userId, age, gender, phone, bloodGroup);
+      const profileId = await PatientProfileModel.create(userId, age, gender, phoneNumber, bloodGroup);
 
       res.status(201).json({
         message: 'Patient profile created successfully',
         profileId,
-        profile: { userId, age, gender, phone, bloodGroup }
+        profile: { userId, age, gender, phone: phoneNumber, bloodGroup }
       });
     } catch (error) {
       console.error('Create patient profile error:', error);
@@ -77,6 +85,7 @@ class ProfileController {
     try {
       const userId = req.user.id;
       const updateData = req.body;
+      const normalizedPhone = updateData.phone !== undefined ? normalizePhone(updateData.phone) : undefined;
 
       // Check if profile exists
       const existing = await PatientProfileModel.findByUserId(userId);
@@ -84,8 +93,15 @@ class ProfileController {
         return res.status(404).json({ error: 'Patient profile not found' });
       }
 
+      if (normalizedPhone !== undefined && normalizedPhone !== '' && !isValidPhoneNumber(normalizedPhone)) {
+        return res.status(400).json({ error: 'Phone number must be exactly 10 digits' });
+      }
+
       // Update profile
-      await PatientProfileModel.updateProfile(userId, updateData);
+      await PatientProfileModel.updateProfile(userId, {
+        ...updateData,
+        phone: normalizedPhone !== undefined ? normalizedPhone : updateData.phone,
+      });
 
       res.json({
         message: 'Patient profile updated successfully'
