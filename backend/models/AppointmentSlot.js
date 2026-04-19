@@ -50,7 +50,7 @@ class AppointmentSlot {
 
     // Get existing slots from database
     const query = `
-      SELECT slot_number, is_available, is_booked
+      SELECT slot_number, is_available, is_booked, slot_start_time, slot_end_time
       FROM appointment_slots
       WHERE doctor_id = ? AND slot_date = ?
     `;
@@ -63,6 +63,8 @@ class AppointmentSlot {
       dbSlotMap[slot.slot_number] = {
         is_available: slot.is_available,
         is_booked: slot.is_booked,
+        slot_start_time: slot.slot_start_time,
+        slot_end_time: slot.slot_end_time,
       };
     });
 
@@ -92,13 +94,40 @@ class AppointmentSlot {
       throw new Error('Invalid slot number. Valid slots: 1-8, 11-24');
     }
 
+    // Get the slot time info
+    const slotTimes = this.generateSlotTimes();
+    const slotInfo = slotTimes.find(s => s.slot === slotNumber);
+
+    if (!slotInfo) {
+      throw new Error(`Slot ${slotNumber} time information not found`);
+    }
+
     const upsertQuery = `
-      INSERT INTO appointment_slots (doctor_id, slot_date, slot_number, is_available)
-      VALUES (?, ?, ?, TRUE)
-      ON DUPLICATE KEY UPDATE is_available = TRUE, updated_at = CURRENT_TIMESTAMP
+      INSERT INTO appointment_slots (
+        doctor_id, 
+        slot_date, 
+        slot_number, 
+        slot_start_time,
+        slot_end_time,
+        is_available
+      )
+      VALUES (?, ?, ?, ?, ?, TRUE)
+      ON DUPLICATE KEY UPDATE 
+        is_available = TRUE, 
+        slot_start_time = VALUES(slot_start_time),
+        slot_end_time = VALUES(slot_end_time),
+        updated_at = CURRENT_TIMESTAMP
     `;
 
-    const [result] = await db.execute(upsertQuery, [doctorId, slotDate, slotNumber]);
+    const [result] = await db.execute(upsertQuery, [
+      doctorId, 
+      slotDate, 
+      slotNumber,
+      slotInfo.start,
+      slotInfo.end
+    ]);
+    
+    console.log(`✅ Slot ${slotNumber} (${slotInfo.start}-${slotInfo.end}) made available`);
     return result.affectedRows > 0;
   }
 
@@ -121,39 +150,124 @@ class AppointmentSlot {
   }
 
   /**
-   * Update multiple slots
+   * Update multiple slots - Store all slot details when doctor saves changes
    */
   static async updateMultipleSlots(doctorId, slotDate, slotsData) {
+    console.log(`📋 updateMultipleSlots called:`, {
+      doctorId,
+      slotDate,
+      totalSlots: slotsData.length,
+      slots: slotsData
+    });
+
     const availableSlots = slotsData.filter(s => s.isAvailable);
+    console.log(`✅ Available slots to save:`, availableSlots);
+
     if (availableSlots.length === 0) {
+      console.error('❌ No available slots in request');
       throw new Error('At least one slot must be available');
     }
 
-    const connection = await db.getConnection();
+    // Get slot times for reference
+    const slotTimes = this.generateSlotTimes();
+    const slotTimeMap = {};
+    slotTimes.forEach(slot => {
+      slotTimeMap[slot.slot] = { start: slot.start, end: slot.end };
+    });
+
+    let connection;
     try {
+      console.log('🔌 DB object type:', typeof db);
+      console.log('🔌 DB object keys:', Object.keys(db || {}));
+      console.log('🔌 typeof db.getConnection:', typeof db?.getConnection);
+      console.log('🔌 Getting database connection...');
+      connection = await db.getConnection();
+      console.log('🔌 Connection acquired, starting transaction...');
+      
       await connection.beginTransaction();
+      console.log('🔄 Transaction started');
 
       // Delete all existing slots for this date
       const deleteQuery = `DELETE FROM appointment_slots WHERE doctor_id = ? AND slot_date = ?`;
-      await connection.execute(deleteQuery, [doctorId, slotDate]);
+      console.log(`🗑️ Executing delete query:`, {
+        doctorId,
+        slotDate
+      });
+      
+      const deleteResult = await connection.execute(deleteQuery, [doctorId, slotDate]);
+      console.log(`🗑️ Delete result:`, deleteResult[0]);
 
-      // Insert only available slots
+      // Insert only available slots with complete details
       const insertQuery = `
-        INSERT INTO appointment_slots (doctor_id, slot_date, slot_number, is_available)
-        VALUES (?, ?, ?, TRUE)
+        INSERT INTO appointment_slots (
+          doctor_id, 
+          slot_date, 
+          slot_number, 
+          slot_start_time,
+          slot_end_time,
+          is_available, 
+          is_booked
+        )
+        VALUES (?, ?, ?, ?, ?, TRUE, FALSE)
       `;
 
+      let insertedCount = 0;
       for (const slot of availableSlots) {
-        await connection.execute(insertQuery, [doctorId, slotDate, slot.slotNumber]);
+        const slotNum = slot.slotNumber;
+        const timeInfo = slotTimeMap[slotNum];
+        
+        if (!timeInfo) {
+          console.warn(`⚠️ Invalid slot number: ${slotNum}, skipping...`);
+          continue;
+        }
+
+        console.log(`📤 Inserting slot:`, {
+          doctorId,
+          slotDate,
+          slotNum,
+          startTime: timeInfo.start,
+          endTime: timeInfo.end
+        });
+
+        const insertResult = await connection.execute(insertQuery, [
+          doctorId, 
+          slotDate, 
+          slotNum,
+          timeInfo.start,
+          timeInfo.end,
+        ]);
+        
+        console.log(`✅ Insert result for slot ${slotNum}:`, insertResult[0]);
+        insertedCount++;
+        console.log(`✅ Slot ${slotNum} (${timeInfo.start}-${timeInfo.end}) saved for ${slotDate}`);
       }
 
+      console.log(`💾 All inserts complete, committing transaction...`);
       await connection.commit();
+      console.log(`📝 Transaction committed. Saved ${insertedCount} available slots for doctor ${doctorId} on ${slotDate}`);
       return true;
     } catch (error) {
-      await connection.rollback();
+      console.error('❌ Error in updateMultipleSlots:', error);
+      if (connection) {
+        try {
+          console.log('🔙 Rolling back transaction...');
+          await connection.rollback();
+          console.error('🔙 Transaction rolled back due to error:', error.message);
+        } catch (rollbackError) {
+          console.error('❌ Rollback error:', rollbackError);
+        }
+      }
       throw error;
     } finally {
-      connection.release();
+      if (connection) {
+        try {
+          console.log('🔌 Releasing connection...');
+          await connection.release();
+          console.log('🔌 Connection released');
+        } catch (releaseError) {
+          console.error('❌ Error releasing connection:', releaseError);
+        }
+      }
     }
   }
 

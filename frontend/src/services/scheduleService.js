@@ -30,16 +30,26 @@ export const scheduleService = {
    * @returns {Promise}
    */
   updateMultipleSlots: (scheduleDate, slotsObj) => {
+    console.log('📤 scheduleService.updateMultipleSlots called with:');
+    console.log('   - scheduleDate:', scheduleDate);
+    console.log('   - slotsObj:', slotsObj);
+
     // Convert object { slotNumber: boolean } to array [ { slotNumber, isAvailable } ]
     const slotsArray = Object.entries(slotsObj).map(([slotNumber, isAvailable]) => ({
       slotNumber: parseInt(slotNumber),
       isAvailable: Boolean(isAvailable),
     }));
+
+    console.log('   - slotsArray converted:', slotsArray);
     
-    return apiClient.post('/schedule/bulk', {
+    const requestData = {
       scheduleDate,
       slots: slotsArray,
-    });
+    };
+
+    console.log('   - final request:', requestData);
+    
+    return apiClient.post('/schedule/bulk', requestData);
   },
 
   /**

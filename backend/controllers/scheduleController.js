@@ -78,37 +78,109 @@ class ScheduleController {
   // Update multiple slots at once (bulk update)
   static async updateMultipleSlots(req, res) {
     try {
-      const doctorId = req.user.id;
+      const doctorId = req.user?.id;
       const { scheduleDate, slots } = req.body;
 
-      if (!scheduleDate || !Array.isArray(slots)) {
+      console.log(`🔍 Received save request:`, {
+        doctorId,
+        scheduleDate,
+        slotsReceived: slots,
+        slotsType: typeof slots,
+        slotsIsArray: Array.isArray(slots)
+      });
+
+      // Validate doctorId
+      if (!doctorId) {
+        console.error('❌ No doctorId in req.user:', req.user);
+        return res.status(401).json({ 
+          error: 'Authentication required - no doctor ID found' 
+        });
+      }
+
+      // Validate date
+      if (!scheduleDate) {
+        console.error('❌ Missing scheduleDate');
         return res.status(400).json({ 
-          error: 'scheduleDate and slots array are required' 
+          error: 'scheduleDate is required (format: YYYY-MM-DD)' 
+        });
+      }
+
+      // Validate slots
+      if (!slots) {
+        console.error('❌ Missing slots');
+        return res.status(400).json({ 
+          error: 'slots is required' 
+        });
+      }
+
+      if (!Array.isArray(slots)) {
+        console.error('❌ slots is not an array:', slots);
+        return res.status(400).json({ 
+          error: `slots must be an array, received ${typeof slots}` 
+        });
+      }
+
+      if (slots.length === 0) {
+        console.error('❌ slots array is empty');
+        return res.status(400).json({ 
+          error: 'At least one slot must be provided' 
         });
       }
 
       // Validate slot numbers and format
-      const formattedSlots = slots.map(slot => {
-        const slotNumber = slot.slotNumber || slot.slot;
+      let formattedSlots = [];
+      for (const slot of slots) {
+        const slotNumber = slot?.slotNumber || slot?.slot;
+        if (slotNumber === undefined || slotNumber === null) {
+          console.error('❌ Slot missing slotNumber/slot:', slot);
+          return res.status(400).json({ 
+            error: `Invalid slot format: missing slotNumber. Received: ${JSON.stringify(slot)}` 
+          });
+        }
+
         const num = parseInt(slotNumber);
         
-        if (num < 1 || num > 24 || [9, 10].includes(num)) {
-          throw new Error(`Invalid slot number: ${num}`);
+        if (isNaN(num)) {
+          console.error('❌ Invalid slot number (NaN):', slotNumber);
+          return res.status(400).json({ 
+            error: `Invalid slot number: ${slotNumber} (not a number)` 
+          });
+        }
+
+        if (num < 1 || num > 24) {
+          console.error('❌ Slot number out of range:', num);
+          return res.status(400).json({ 
+            error: `Invalid slot number: ${num}. Valid range: 1-24` 
+          });
+        }
+
+        if ([9, 10].includes(num)) {
+          console.error('❌ Slot is lunch break:', num);
+          return res.status(400).json({ 
+            error: `Slot ${num} is during lunch break (12 PM - 1 PM) and cannot be set` 
+          });
         }
         
-        return {
+        const isAvail = Boolean(slot.isAvailable);
+        formattedSlots.push({
           slotNumber: num,
-          isAvailable: Boolean(slot.isAvailable)
-        };
-      });
+          isAvailable: isAvail
+        });
+      }
+
+      console.log(`✅ Formatted slots:`, formattedSlots);
 
       // Check if at least one slot is being set to available
       const hasAvailableSlot = formattedSlots.some(s => s.isAvailable === true);
       if (!hasAvailableSlot) {
+        console.warn('⚠️ No available slots in request');
         return res.status(400).json({ 
           error: 'At least one slot must be set as available' 
         });
       }
+
+      console.log(`📅 [${new Date().toISOString()}] Doctor ${doctorId} updating schedule for ${scheduleDate}`);
+      console.log(`📋 Saving ${formattedSlots.filter(s => s.isAvailable).length} available slots`);
 
       const success = await AppointmentSlot.updateMultipleSlots(
         doctorId,
@@ -117,17 +189,39 @@ class ScheduleController {
       );
 
       if (!success) {
+        console.error('❌ updateMultipleSlots returned false');
         return res.status(500).json({ error: 'Failed to update slots' });
       }
 
-      res.json({
+      const availableSlots = formattedSlots.filter(s => s.isAvailable);
+      const response = {
         success: true,
-        message: `${formattedSlots.filter(s => s.isAvailable).length} slot(s) updated as available`,
-        updatedCount: formattedSlots.filter(s => s.isAvailable).length
-      });
+        message: `Schedule saved successfully!`,
+        scheduleDate,
+        totalSlotsUpdated: availableSlots.length,
+        slotsAvailable: availableSlots.map(s => s.slotNumber),
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(`✅ Schedule save successful:`, response);
+      res.json(response);
+
     } catch (error) {
-      console.error('Update multiple slots error:', error);
-      res.status(400).json({ error: error.message });
+      console.error('❌ Update multiple slots error:');
+      console.error('   Error message:', error.message);
+      console.error('   Error stack:', error.stack);
+      
+      // If it's a validation-related error, return 400
+      if (error.message.includes('validation') || error.message.includes('Invalid') || error.message.includes('required')) {
+        return res.status(400).json({ 
+          error: error.message
+        });
+      }
+      
+      // Otherwise, it's a server error
+      res.status(500).json({ 
+        error: 'Failed to save schedule: ' + error.message
+      });
     }
   }
 

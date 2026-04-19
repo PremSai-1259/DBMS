@@ -151,6 +151,8 @@ CREATE TABLE appointment_slots (
     slot_date DATE,
 
     slot_number INT CHECK (slot_number BETWEEN 1 AND 24),
+    slot_start_time TIME,
+    slot_end_time TIME,
 
     is_available BOOLEAN DEFAULT FALSE,
     is_booked BOOLEAN DEFAULT FALSE,
@@ -160,6 +162,7 @@ CREATE TABLE appointment_slots (
 
     UNIQUE (doctor_id, slot_date, slot_number),
     INDEX idx_doctor_date (doctor_id, slot_date),
+    INDEX idx_doctor_available (doctor_id, is_available),
 
     FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE
 );

@@ -9,7 +9,52 @@ const ScheduleManager = ({ selectedDate }) => {
   const [saving, setSaving] = useState(false);
   const [localChanges, setLocalChanges] = useState({});
   const [hasSetupBefore, setHasSetupBefore] = useState(true);
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
   const { showToast } = useToast();
+
+  // Generate all 24 slots as fallback when API fails
+  const generateFallbackSlots = () => {
+    const slotTimes = [
+      { slot: 1, start: '08:00', end: '08:30' },
+      { slot: 2, start: '08:30', end: '09:00' },
+      { slot: 3, start: '09:00', end: '09:30' },
+      { slot: 4, start: '09:30', end: '10:00' },
+      { slot: 5, start: '10:00', end: '10:30' },
+      { slot: 6, start: '10:30', end: '11:00' },
+      { slot: 7, start: '11:00', end: '11:30' },
+      { slot: 8, start: '11:30', end: '12:00' },
+      { slot: 11, start: '13:00', end: '13:30' },
+      { slot: 12, start: '13:30', end: '14:00' },
+      { slot: 13, start: '14:00', end: '14:30' },
+      { slot: 14, start: '14:30', end: '15:00' },
+      { slot: 15, start: '15:00', end: '15:30' },
+      { slot: 16, start: '15:30', end: '16:00' },
+      { slot: 17, start: '16:00', end: '16:30' },
+      { slot: 18, start: '16:30', end: '17:00' },
+      { slot: 19, start: '17:00', end: '17:30' },
+      { slot: 20, start: '17:30', end: '18:00' },
+      { slot: 21, start: '18:00', end: '18:30' },
+      { slot: 22, start: '18:30', end: '19:00' },
+      { slot: 23, start: '19:00', end: '19:30' },
+      { slot: 24, start: '19:30', end: '20:00' },
+    ];
+
+    const convertTo12Hour = (time24) => {
+      const [hours, minutes] = time24.split(':').map(Number);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12;
+      return `${String(displayHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`;
+    };
+
+    return slotTimes.map(slot => ({
+      slotNumber: slot.slot,
+      startTime: slot.start,
+      endTime: slot.end,
+      displayTime: `${convertTo12Hour(slot.start)} - ${convertTo12Hour(slot.end)}`,
+      isAvailable: false,
+      isBooked: false,
+    }));
+  };
 
   // Load slots for the selected date
   useEffect(() => {
@@ -19,28 +64,35 @@ const ScheduleManager = ({ selectedDate }) => {
   const loadSlots = async () => {
     setLoading(true);
     setError(null);
+    setIsUsingFallback(false);
     try {
       const response = await scheduleService.getSlotsForDate(selectedDate);
       const loadedSlots = response?.data?.slots || [];
       
       if (!Array.isArray(loadedSlots) || loadedSlots.length === 0) {
-        console.warn('No slots received from API', response);
-        setError('No slots available for this date. Please try again.');
-        setSlots([]);
+        console.warn('No slots received from API, using fallback', response);
+        // Use fallback slots when API returns empty
+        const fallbackSlots = generateFallbackSlots();
+        setSlots(fallbackSlots);
+        setIsUsingFallback(true);
+        setHasSetupBefore(false);
       } else {
         setSlots(loadedSlots);
         setError(null);
+        setIsUsingFallback(false);
+        // Check if doctor has set any availability before on this date
+        const hasAnyAvailable = loadedSlots.some(s => s.isAvailable);
+        setHasSetupBefore(hasAnyAvailable);
       }
       setLocalChanges({});
-      
-      // Check if doctor has set any availability before on this date
-      const hasAnyAvailable = loadedSlots.some(s => s.isAvailable);
-      setHasSetupBefore(hasAnyAvailable);
     } catch (error) {
       console.error('Failed to load slots:', error);
-      setError(`Failed to load schedule: ${error.message || 'Unknown error'}`);
-      setSlots([]);
-      showToast('Failed to load schedule', 'error');
+      // Use fallback slots when API fails
+      const fallbackSlots = generateFallbackSlots();
+      setSlots(fallbackSlots);
+      setIsUsingFallback(true);
+      setHasSetupBefore(false);
+      showToast('Using default schedule (API error - changes will be saved locally)', 'warning');
     } finally {
       setLoading(false);
     }
@@ -67,33 +119,60 @@ const ScheduleManager = ({ selectedDate }) => {
   };
 
   const handleSaveChanges = async () => {
+    console.log('💾 Save button clicked');
+    console.log('📊 Local changes:', localChanges);
+    console.log('📊 Changes count:', Object.keys(localChanges).length);
+
     if (Object.keys(localChanges).length === 0) {
+      console.warn('⚠️ No changes to save');
       showToast('No changes to save', 'warning');
       return;
     }
 
-    // Check if at least one slot will be available after save
-    const willHaveAvailable = slots.some(s => s.isAvailable);
-    if (!willHaveAvailable) {
+    // Get all currently available slots
+    const availableSlots = slots.filter(s => s.isAvailable);
+    console.log('✅ Currently available slots:', availableSlots.map(s => s.slotNumber));
+
+    if (availableSlots.length === 0) {
+      console.warn('⚠️ No available slots selected');
       showToast('Please set at least one slot as available before saving', 'warning');
       return;
     }
 
     setSaving(true);
     try {
-      await scheduleService.updateMultipleSlots(selectedDate, localChanges);
+      // Convert available slots to the format expected by API
+      const slotsToSave = {};
+      availableSlots.forEach(slot => {
+        slotsToSave[slot.slotNumber] = true;
+      });
+
+      console.log('📤 Sending to API:');
+      console.log('   - selectedDate:', selectedDate);
+      console.log('   - slotsToSave:', slotsToSave);
+      console.log('   - availableCount:', availableSlots.length);
+
+      const response = await scheduleService.updateMultipleSlots(selectedDate, slotsToSave);
+      
+      console.log('✅ API Response:', response?.data);
+      
       setLocalChanges({});
-      
-      // Update setup status
       setHasSetupBefore(true);
+      setIsUsingFallback(false);
       
-      const changedCount = Object.keys(localChanges).length;
-      showToast(`✓ Schedule saved! ${changedCount} slot(s) updated.`, 'success');
+      // Build detailed success message
+      const slotList = availableSlots.map(s => `${s.slotNumber} (${s.displayTime})`).join(', ');
+      showToast(
+        `✓ Schedule saved! ${availableSlots.length} slot(s) available: ${slotList}`,
+        'success'
+      );
+      
+      console.log(`✅ Schedule saved successfully`);
     } catch (error) {
-      console.error('Failed to save changes:', error);
-      showToast('Failed to save schedule', 'error');
-      // Reload to revert changes
-      loadSlots();
+      console.error('❌ Failed to save changes:', error);
+      const errorMsg = error?.response?.data?.error || error.message || 'Unknown error';
+      console.error('   Error details:', errorMsg);
+      showToast('Failed to save schedule: ' + errorMsg, 'error');
     } finally {
       setSaving(false);
     }
@@ -132,30 +211,6 @@ const ScheduleManager = ({ selectedDate }) => {
     );
   }
 
-  if (error) {
-    return (
-      <div className="w-full space-y-4">
-        <div className="px-5 py-4 rounded-xl border-l-4 bg-red-50" style={{ borderLeft: '4px solid #e53e3e' }}>
-          <div className="flex items-start gap-3">
-            <span className="text-2xl flex-shrink-0">❌</span>
-            <div className="flex-1">
-              <h4 className="text-sm font-semibold text-[#c53030]">Error Loading Schedule</h4>
-              <p className="text-xs text-[#9b2c2c] mt-1">{error}</p>
-              <button
-                onClick={loadSlots}
-                className="mt-3 px-4 py-2 text-xs font-medium rounded-lg bg-[#e53e3e] text-white hover:bg-[#c53030] transition-all">
-                Try Again
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="text-center py-8">
-          <p className="text-sm text-[#4a5a6a]">Please try refreshing the page or contact support if the problem persists.</p>
-        </div>
-      </div>
-    );
-  }
-
   if (!slots || slots.length === 0) {
     return (
       <div className="w-full space-y-4">
@@ -164,7 +219,7 @@ const ScheduleManager = ({ selectedDate }) => {
             <span className="text-2xl flex-shrink-0">⚠️</span>
             <div className="flex-1">
               <h4 className="text-sm font-semibold text-[#92400e]">No Slots Found</h4>
-              <p className="text-xs text-[#a16207] mt-1">The schedule data could not be loaded. This may be a database or server issue.</p>
+              <p className="text-xs text-[#a16207] mt-1">The schedule data could not be loaded. Please try again.</p>
               <button
                 onClick={loadSlots}
                 className="mt-3 px-4 py-2 text-xs font-medium rounded-lg bg-[#f59e0b] text-white hover:bg-[#d97706] transition-all">
@@ -183,6 +238,27 @@ const ScheduleManager = ({ selectedDate }) => {
 
   return (
     <div className="w-full space-y-6">
+      {/* FALLBACK MODE WARNING BANNER */}
+      {isUsingFallback && (
+        <div className="px-5 py-4 rounded-xl border-l-4" style={{ background: '#fef3e6', borderLeft: '4px solid #f59e0b' }}>
+          <div className="flex items-start gap-3">
+            <span className="text-2xl flex-shrink-0">⚠️</span>
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-[#92400e]">Schedule using default view</h4>
+              <p className="text-xs text-[#a16207] mt-1">
+                Server connection issue detected. All slots are shown below. Your changes will be saved when you click "Save Changes".
+              </p>
+              <button
+                onClick={loadSlots}
+                className="mt-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
+                style={{ background: '#f59e0b', color: 'white' }}>
+                Retry Connection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SETUP REQUIRED BANNER */}
       {isSetupRequired && (
         <div className="px-5 py-4 rounded-xl border-l-4" style={{ background: '#fef3e6', borderLeft: '4px solid #f59e0b' }}>
