@@ -205,8 +205,15 @@ const ScheduleManager = ({ selectedDate }) => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-12">
-        <div className="w-8 h-8 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin" />
+      <div className="flex flex-col justify-center items-center py-16 gap-4">
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin" />
+          <div className="absolute inset-2 rounded-full border-4 border-transparent border-r-[#3a7bd5] animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1s' }} />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-[#1a2a3a]">Loading your schedule...</p>
+          <p className="text-xs text-[#8a9ab0] mt-1">Please wait a moment</p>
+        </div>
       </div>
     );
   }
@@ -214,16 +221,17 @@ const ScheduleManager = ({ selectedDate }) => {
   if (!slots || slots.length === 0) {
     return (
       <div className="w-full space-y-4">
-        <div className="px-5 py-4 rounded-xl border-l-4 bg-yellow-50" style={{ borderLeft: '4px solid #f59e0b' }}>
-          <div className="flex items-start gap-3">
-            <span className="text-2xl flex-shrink-0">⚠️</span>
+        <div className="px-6 py-5 rounded-2xl border-2 bg-gradient-to-r from-[#fee2e2] to-[#fca5a5]" style={{ borderColor: '#dc2626' }}>
+          <div className="flex items-start gap-4">
+            <span className="text-3xl flex-shrink-0">⚠️</span>
             <div className="flex-1">
-              <h4 className="text-sm font-semibold text-[#92400e]">No Slots Found</h4>
-              <p className="text-xs text-[#a16207] mt-1">The schedule data could not be loaded. Please try again.</p>
+              <h4 className="text-sm font-bold text-[#991b1b]">Unable to Load Schedule</h4>
+              <p className="text-xs text-[#b91c1c] mt-1.5">The schedule data could not be loaded. This might be a temporary issue.</p>
               <button
                 onClick={loadSlots}
-                className="mt-3 px-4 py-2 text-xs font-medium rounded-lg bg-[#f59e0b] text-white hover:bg-[#d97706] transition-all">
-                Reload Schedule
+                className="mt-3 px-4 py-2 text-xs font-bold rounded-lg transition-all transform hover:scale-105 active:scale-95"
+                style={{ background: '#dc2626', color: 'white' }}>
+                🔄 Try Again
               </button>
             </div>
           </div>
@@ -240,19 +248,19 @@ const ScheduleManager = ({ selectedDate }) => {
     <div className="w-full space-y-6">
       {/* FALLBACK MODE WARNING BANNER */}
       {isUsingFallback && (
-        <div className="px-5 py-4 rounded-xl border-l-4" style={{ background: '#fef3e6', borderLeft: '4px solid #f59e0b' }}>
-          <div className="flex items-start gap-3">
-            <span className="text-2xl flex-shrink-0">⚠️</span>
+        <div className="px-6 py-5 rounded-2xl border-2" style={{ background: '#fef3c7', borderColor: '#fcd34d' }}>
+          <div className="flex items-start gap-4">
+            <span className="text-3xl flex-shrink-0">⚠️</span>
             <div className="flex-1">
-              <h4 className="text-sm font-semibold text-[#92400e]">Schedule using default view</h4>
-              <p className="text-xs text-[#a16207] mt-1">
-                Server connection issue detected. All slots are shown below. Your changes will be saved when you click "Save Changes".
+              <h4 className="text-sm font-bold text-[#92400e]">Temporary Connection Mode</h4>
+              <p className="text-xs text-[#a16207] mt-1.5">
+                There's a temporary issue connecting to the server. Using default schedule view. Your changes will be saved when you click "Save Changes".
               </p>
               <button
                 onClick={loadSlots}
-                className="mt-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
+                className="mt-3 px-4 py-2 text-xs font-bold rounded-lg transition-all transform hover:scale-105 active:scale-95"
                 style={{ background: '#f59e0b', color: 'white' }}>
-                Retry Connection
+                🔄 Retry Connection
               </button>
             </div>
           </div>
@@ -261,22 +269,20 @@ const ScheduleManager = ({ selectedDate }) => {
 
       {/* SETUP REQUIRED BANNER */}
       {isSetupRequired && (
-        <div className="px-5 py-4 rounded-xl border-l-4" style={{ background: '#fef3e6', borderLeft: '4px solid #f59e0b' }}>
-          <div className="flex items-start gap-3">
-            <span className="text-2xl flex-shrink-0">⚠️</span>
+        <div className="px-6 py-5 rounded-2xl border-2" style={{ background: '#fef3c7', borderColor: '#fcd34d' }}>
+          <div className="flex items-start gap-4">
+            <span className="text-3xl flex-shrink-0">⚡</span>
             <div className="flex-1">
-              <h4 className="text-sm font-semibold text-[#92400e]">Set availability first</h4>
-              <p className="text-xs text-[#a16207] mt-1">
-                All slots are unavailable by default. Select at least one slot and save to start accepting appointments on this date.
+              <h4 className="text-sm font-bold text-[#92400e]">First Time Setup Required!</h4>
+              <p className="text-xs text-[#a16207] mt-1.5">
+                Select your available time slots below to start accepting patient appointments. All slots are unavailable by default.
               </p>
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={handleSelectAll}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
-                  style={{ background: '#e6f9f2', color: '#1a9e6a', border: '1px solid #1a9e6a' }}>
-                  Quick: Make All Available
-                </button>
-              </div>
+              <button
+                onClick={handleSelectAll}
+                className="mt-3 px-4 py-2 text-xs font-bold rounded-lg transition-all transform hover:scale-105 active:scale-95"
+                style={{ background: '#f59e0b', color: 'white' }}>
+                🚀 Quick Setup: Make All Available
+              </button>
             </div>
           </div>
         </div>
@@ -284,77 +290,97 @@ const ScheduleManager = ({ selectedDate }) => {
 
       {/* SUCCESS BANNER - Setup Complete */}
       {hasAvailableSlots && hasSetupBefore && Object.keys(localChanges).length === 0 && (
-        <div className="px-5 py-3 rounded-xl border-l-4" style={{ background: '#e6f9f2', borderLeft: '4px solid #1a9e6a' }}>
+        <div className="px-6 py-4 rounded-2xl border-2 bg-gradient-to-r from-[#ecfdf5] to-[#d1fae5]" style={{ borderColor: '#10b981' }}>
           <div className="flex items-center gap-3">
-            <span className="text-lg">✓</span>
-            <p className="text-xs font-medium text-[#1a9e6a]">
-              Schedule is ready! You have {availableCount} available slot{availableCount !== 1 ? 's' : ''} on this date.
-            </p>
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="text-sm font-bold text-[#065f46]">
+                Schedule is ready! 
+              </p>
+              <p className="text-xs text-[#047857] mt-0.5">
+                You have {availableCount} available slot{availableCount !== 1 ? 's' : ''} on this date. Patients can now book appointments during these times.
+              </p>
+            </div>
           </div>
         </div>
       )}
       {/* Header with stats */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-sm font-semibold text-[#1a2a3a]">
-            Schedule for {new Date(selectedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
-          </h3>
-          <p className="text-xs text-[#8a9ab0] mt-1">
-            {availableCount} available slot{availableCount !== 1 ? 's' : ''} · 24 total slots
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleSelectAll}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
-            style={{ background: '#e8f0fb', color: '#3a7bd5' }}>
-            Select All
-          </button>
-          <button
-            onClick={handleDeselectAll}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
-            style={{ background: '#f8f9fc', color: '#4a5a6a', border: '1px solid #e6ecf5' }}>
-            Deselect All
-          </button>
+      <div className="bg-gradient-to-r from-[#3a7bd5] to-[#2d5a8e] rounded-2xl p-6 text-white shadow-lg">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <span className="text-2xl">📆</span> 
+              Schedule for {new Date(selectedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
+            </h3>
+            <p className="text-sm mt-2 opacity-90">
+              You have <span className="font-bold text-lg">{availableCount}</span> available slot{availableCount !== 1 ? 's' : ''} out of 24 total
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="text-4xl font-bold">{availableCount}</div>
+            <div className="text-sm opacity-90 mt-1">Slots Open</div>
+          </div>
         </div>
       </div>
 
-      {/* All Slots - List View */}
-      <div className="bg-[#f8f9fc] rounded-xl border border-[#e6ecf5] p-5">
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-[#1a2a3a]">📋 All 24 Available Slots</h3>
-          <p className="text-xs text-[#8a9ab0] mt-1">Toggle each slot to set availability. Morning (8 AM - 12 PM) | Lunch (12-1 PM - unavailable) | Afternoon (1 PM - 9 PM)</p>
+      {/* All Slots - Grid View */}
+      <div className="bg-gradient-to-br from-[#f8f9fc] to-[#f0f4f9] rounded-2xl border border-[#e6ecf5] p-6">
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-bold text-[#1a2a3a] flex items-center gap-2">
+              <span className="text-xl">📅</span> Schedule Overview
+            </h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleSelectAll()}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all transform hover:scale-105"
+                style={{ background: '#e6f9f2', color: '#1a9e6a', border: '1px solid #1a9e6a' }}>
+                ✓ Select All
+              </button>
+              <button
+                onClick={() => handleDeselectAll()}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all transform hover:scale-105"
+                style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #dc2626' }}>
+                ✕ Deselect All
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-[#8a9ab0]">Click on any slot to toggle availability. Green = Available, Gray = Unavailable</p>
         </div>
 
         {/* Morning Slots */}
-        <div className="mb-6">
-          <div className="text-xs font-semibold text-[#1a2a3a] mb-3 px-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ background: '#3a7bd5' }} />
-            Morning (8:00 AM - 12:00 PM) - {morningSlots.filter(s => s.isAvailable).length} / {morningSlots.length} available
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-[#e6ecf5]">
+            <div>
+              <h4 className="text-sm font-bold text-[#1a2a3a] flex items-center gap-2">
+                <span className="text-lg">🌅</span> Morning (8:00 AM - 12:00 PM)
+              </h4>
+              <p className="text-xs text-[#8a9ab0] mt-1">{morningSlots.filter(s => s.isAvailable).length} / {morningSlots.length} slots available</p>
+            </div>
           </div>
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {morningSlots.map(slot => (
               <button
                 key={slot.slotNumber}
                 onClick={() => handleToggleSlot(slot.slotNumber)}
-                className="w-full px-4 py-3 rounded-lg transition-all flex items-center justify-between border hover:shadow-md"
+                className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2"
                 style={
                   slot.isAvailable
-                    ? { background: '#e6f9f2', border: '1px solid #1a9e6a' }
-                    : { background: '#ffffff', border: '1px solid #e6ecf5' }
+                    ? {
+                        background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
+                        borderColor: '#16a34a',
+                        boxShadow: '0 4px 12px rgba(22, 163, 74, 0.15)'
+                      }
+                    : {
+                        background: '#ffffff',
+                        borderColor: '#e5e7eb'
+                      }
                 }>
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="text-center min-w-[60px]">
-                    <div className="text-xs font-bold text-[#1a2a3a]">Slot {slot.slotNumber}</div>
-                    <div className="text-xs font-semibold text-[#3a7bd5]">{slot.displayTime}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className={`text-xs font-medium px-3 py-1.5 rounded-full ${slot.isAvailable ? 'bg-[#d1fae5] text-[#065f46]' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
-                    {slot.isAvailable ? '✓ Available' : '✕ Unavailable'}
-                  </div>
-                  <div className="w-5 h-5 rounded-lg flex items-center justify-center" style={{ background: slot.isAvailable ? '#1a9e6a' : '#e6ecf5' }}>
-                    {slot.isAvailable && <span style={{ color: 'white' }}>✓</span>}
+                <div className="text-center">
+                  <div className="text-lg font-bold text-[#1a2a3a]">{slot.slotNumber}</div>
+                  <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
+                  <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block ${slot.isAvailable ? 'bg-[#dcfce7] text-[#166534]' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
+                    {slot.isAvailable ? '✓' : '○'}
                   </div>
                 </div>
               </button>
@@ -363,39 +389,47 @@ const ScheduleManager = ({ selectedDate }) => {
         </div>
 
         {/* Lunch Break Info */}
-        <div className="px-4 py-3 rounded-lg mb-6" style={{ background: '#fff8e6', border: '1px solid #ffd699' }}>
-          <p className="text-xs font-medium text-[#b07a00]">🍽️ Lunch Break: 12:00 PM - 1:00 PM (Slots 9-10 - Always Unavailable)</p>
+        <div className="px-5 py-4 rounded-xl mb-8 flex items-start gap-3" style={{ background: '#fef3c7', border: '2px solid #fcd34d' }}>
+          <span className="text-2xl flex-shrink-0">🍽️</span>
+          <div>
+            <p className="text-sm font-bold text-[#92400e]">Lunch Break</p>
+            <p className="text-xs text-[#a16207] mt-0.5">12:00 PM - 1:00 PM (Slots 9-10 are always unavailable)</p>
+          </div>
         </div>
 
         {/* Afternoon Slots */}
         <div>
-          <div className="text-xs font-semibold text-[#1a2a3a] mb-3 px-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ background: '#3a7bd5' }} />
-            Afternoon & Evening (1:00 PM - 9:00 PM) - {afternoonSlots.filter(s => s.isAvailable).length} / {afternoonSlots.length} available
+          <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-[#e6ecf5]">
+            <div>
+              <h4 className="text-sm font-bold text-[#1a2a3a] flex items-center gap-2">
+                <span className="text-lg">🌤️</span> Afternoon & Evening (1:00 PM - 9:00 PM)
+              </h4>
+              <p className="text-xs text-[#8a9ab0] mt-1">{afternoonSlots.filter(s => s.isAvailable).length} / {afternoonSlots.length} slots available</p>
+            </div>
           </div>
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {afternoonSlots.map(slot => (
               <button
                 key={slot.slotNumber}
                 onClick={() => handleToggleSlot(slot.slotNumber)}
-                className="w-full px-4 py-3 rounded-lg transition-all flex items-center justify-between border hover:shadow-md"
+                className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2"
                 style={
                   slot.isAvailable
-                    ? { background: '#e6f9f2', border: '1px solid #1a9e6a' }
-                    : { background: '#ffffff', border: '1px solid #e6ecf5' }
+                    ? {
+                        background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
+                        borderColor: '#16a34a',
+                        boxShadow: '0 4px 12px rgba(22, 163, 74, 0.15)'
+                      }
+                    : {
+                        background: '#ffffff',
+                        borderColor: '#e5e7eb'
+                      }
                 }>
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="text-center min-w-[60px]">
-                    <div className="text-xs font-bold text-[#1a2a3a]">Slot {slot.slotNumber}</div>
-                    <div className="text-xs font-semibold text-[#3a7bd5]">{slot.displayTime}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className={`text-xs font-medium px-3 py-1.5 rounded-full ${slot.isAvailable ? 'bg-[#d1fae5] text-[#065f46]' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
-                    {slot.isAvailable ? '✓ Available' : '✕ Unavailable'}
-                  </div>
-                  <div className="w-5 h-5 rounded-lg flex items-center justify-center" style={{ background: slot.isAvailable ? '#1a9e6a' : '#e6ecf5' }}>
-                    {slot.isAvailable && <span style={{ color: 'white' }}>✓</span>}
+                <div className="text-center">
+                  <div className="text-lg font-bold text-[#1a2a3a]">{slot.slotNumber}</div>
+                  <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
+                  <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block ${slot.isAvailable ? 'bg-[#dcfce7] text-[#166534]' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
+                    {slot.isAvailable ? '✓' : '○'}
                   </div>
                 </div>
               </button>
@@ -404,43 +438,89 @@ const ScheduleManager = ({ selectedDate }) => {
         </div>
       </div>
 
-      {/* Save Button */}
-      {changedCount > 0 && (
-        <div className="flex items-center gap-3 pt-4 border-t border-[#e6ecf5]">
-          <button
-            onClick={handleSaveChanges}
-            disabled={saving || !slots.some(s => s.isAvailable)}
-            className="px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all duration-200 hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)', boxShadow: '0 4px 12px rgba(58,123,213,0.25)' }}>
-            {saving ? 'Saving...' : `Save Changes (${changedCount})`}
-          </button>
-          <button
-            onClick={loadSlots}
-            disabled={saving}
-            className="px-4 py-2.5 rounded-xl text-sm font-medium text-[#4a5a6a] border border-[#e6ecf5] hover:bg-[#f8f9fc] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-            Cancel
-          </button>
-          {!slots.some(s => s.isAvailable) && (
-            <p className="text-xs text-[#f59e0b] font-medium">
-              Select at least one slot to save
-            </p>
-          )}
+      {/* Save Button Section */}
+      {changedCount > 0 ? (
+        <div className="bg-gradient-to-r from-[#ecfdf5] to-[#d1fae5] rounded-2xl p-6 border-2 border-[#10b981] shadow-lg">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <p className="text-sm font-bold text-[#065f46] flex items-center gap-2">
+                <span className="text-xl">✨</span> You have {changedCount} unsaved change{changedCount > 1 ? 's' : ''}
+              </p>
+              <p className="text-xs text-[#047857] mt-1">
+                {!slots.some(s => s.isAvailable) 
+                  ? '⚠️ Select at least one slot to save' 
+                  : `Ready to save ${slots.filter(s => s.isAvailable).length} available slot${slots.filter(s => s.isAvailable).length !== 1 ? 's' : ''}`}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveChanges}
+                disabled={saving || !slots.some(s => s.isAvailable)}
+                className="px-6 py-3 rounded-xl text-sm font-bold text-white transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg"
+                style={{ 
+                  background: slots.some(s => s.isAvailable) 
+                    ? 'linear-gradient(135deg, #10b981, #059669)' 
+                    : '#9ca3af',
+                  boxShadow: slots.some(s => s.isAvailable) ? '0 4px 14px rgba(16, 185, 129, 0.4)' : 'none'
+                }}>
+                {saving ? '💾 Saving...' : `✓ Save Changes (${changedCount})`}
+              </button>
+              <button
+                onClick={loadSlots}
+                disabled={saving}
+                className="px-5 py-3 rounded-xl text-sm font-semibold text-[#4b5563] bg-white border-2 border-[#e5e7eb] hover:bg-[#f3f4f6] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                ✕ Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-r from-[#f0f9ff] to-[#e0f2fe] rounded-2xl p-6 border-2 border-[#0ea5e9] text-center">
+          <p className="text-sm font-semibold text-[#0369a1]">✅ Your schedule is all set!</p>
+          <p className="text-xs text-[#0c4a6e] mt-1">Make changes to update your availability</p>
         </div>
       )}
 
       {/* Info/Guidance section */}
-      <div className="bg-blue-50 rounded-xl p-4 border border-[#bfdbfe]">
-        <div className="space-y-2">
-          <p className="text-xs text-[#1e40af] font-semibold">📖 How to set up your schedule:</p>
-          <ol className="text-xs text-[#1e40af] space-y-1 ml-4 list-decimal">
-            <li>Select slots you want to be <strong>available</strong> (green)</li>
-            <li>Slots you don't select stay <strong>unavailable</strong> (gray)</li>
-            <li>Save your changes</li>
-            <li>Patients can only book during your <strong>available slots</strong></li>
-          </ol>
-          <p className="text-xs text-[#1e40af] mt-3">
-            <strong>Tip:</strong> Use "Select All" to quickly make all slots available, then deselect the ones you prefer not to work.
+      <div className="bg-gradient-to-r from-[#dbeafe] to-[#dbeafe] rounded-2xl p-6 border-2 border-[#3b82f6]">
+        <div className="space-y-3">
+          <p className="text-sm font-bold text-[#1e40af] flex items-center gap-2">
+            <span className="text-lg">📖</span> How to Set Your Schedule
           </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
+              <span className="text-2xl flex-shrink-0">1️⃣</span>
+              <div>
+                <p className="text-xs font-semibold text-[#1e40af]">Click Slots to Toggle</p>
+                <p className="text-xs text-[#3730a3] mt-0.5">Select the time slots when you're available</p>
+              </div>
+            </div>
+            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
+              <span className="text-2xl flex-shrink-0">2️⃣</span>
+              <div>
+                <p className="text-xs font-semibold text-[#1e40af]">Green = Available</p>
+                <p className="text-xs text-[#3730a3] mt-0.5">Selected slots will be highlighted in green</p>
+              </div>
+            </div>
+            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
+              <span className="text-2xl flex-shrink-0">3️⃣</span>
+              <div>
+                <p className="text-xs font-semibold text-[#1e40af]">Save Your Changes</p>
+                <p className="text-xs text-[#3730a3] mt-0.5">Click the Save button to store your schedule</p>
+              </div>
+            </div>
+            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
+              <span className="text-2xl flex-shrink-0">4️⃣</span>
+              <div>
+                <p className="text-xs font-semibold text-[#1e40af]">Patients Can Book</p>
+                <p className="text-xs text-[#3730a3] mt-0.5">Patients can only book during your available slots</p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 p-3 rounded-lg bg-white border border-[#bfdbfe]">
+            <p className="text-xs text-[#1e40af] font-semibold">💡 Pro Tip:</p>
+            <p className="text-xs text-[#3730a3] mt-1">Use "Select All" to make all slots available, then unselect the ones you'd prefer to skip.</p>
+          </div>
         </div>
       </div>
     </div>
