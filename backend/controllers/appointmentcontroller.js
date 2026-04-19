@@ -88,14 +88,13 @@ class AppointmentController {
 
   static async cancelAppointment(req, res) {
     try {
-      const doctorId = req.user.id;
+      const userId = Number(req.user.id);
+      const userRole = String(req.user.role || '').toLowerCase();
       const { appointmentId } = req.params;
-      const { cancelReason } = req.body;
-
-      // Validation
-      if (!cancelReason) {
-        return res.status(400).json({ error: 'cancelReason required' });
-      }
+      const { cancelReason } = req.body || {};
+      const reasonText = cancelReason && String(cancelReason).trim()
+        ? String(cancelReason).trim()
+        : 'No reason provided';
 
       // Get appointment
       const appointment = await AppointmentModel.findById(appointmentId);
@@ -103,44 +102,78 @@ class AppointmentController {
         return res.status(404).json({ error: 'Appointment not found' });
       }
 
-      // Verify doctor ownership
-      if (appointment.doctor_id !== doctorId) {
-        return res.status(403).json({ error: 'Only the assigned doctor can cancel this appointment' });
-      }
-
       // Check if already cancelled
       if (appointment.status === 'cancelled') {
         return res.status(400).json({ error: 'Appointment is already cancelled' });
       }
 
-      // DOCTOR RESTRICTION: Verify doctor is verified
-      const isVerified = await DoctorProfileModel.isVerified(doctorId);
-      if (!isVerified) {
-        return res.status(403).json({ error: 'Only verified doctors can cancel appointments' });
+      const patient = await UserModel.findById(appointment.patient_id);
+      const doctor = await UserModel.findById(appointment.doctor_id);
+
+      if (userRole === 'doctor') {
+        // Verify doctor ownership
+        if (Number(appointment.doctor_id) !== userId) {
+          return res.status(403).json({ error: 'Only the assigned doctor can cancel this appointment' });
+        }
+
+        // DOCTOR RESTRICTION: Verify doctor is verified
+        const isVerified = await DoctorProfileModel.isVerified(userId);
+        if (!isVerified) {
+          return res.status(403).json({ error: 'Only verified doctors can cancel appointments' });
+        }
+
+        // Cancel appointment
+        await AppointmentModel.cancel(appointmentId, reasonText);
+
+        // Mark the slot unavailable so nobody else can book the cancelled time
+        await AppointmentSlotModel.markAsUnavailable(appointment.slot_id);
+
+        // Send email to patient
+        const emailTemplate = emailTemplates.appointmentCancelled(patient.name, doctor.name, reasonText);
+        await sendEmail(patient.email, emailTemplate.subject, emailTemplate.html);
+
+        // Create notification for patient
+        await NotificationModel.create(appointment.patient_id, 'appointment_cancelled', 
+          `Your appointment has been cancelled. Reason: ${reasonText}`);
+
+        return res.json({
+          message: 'Appointment cancelled successfully',
+          appointmentId
+        });
       }
 
-      // Cancel appointment
-      await AppointmentModel.cancel(appointmentId, cancelReason);
+      if (userRole === 'patient') {
+        // Verify patient ownership
+        if (Number(appointment.patient_id) !== userId) {
+          return res.status(403).json({ error: 'Only the booked patient can cancel this appointment' });
+        }
 
-      // Mark slot as available
-      await AppointmentSlotModel.markAsAvailable(appointment.slot_id);
+        if (appointment.status === 'completed') {
+          return res.status(400).json({ error: 'Completed appointments cannot be cancelled' });
+        }
 
-      // Get patient info
-      const patient = await UserModel.findById(appointment.patient_id);
-      const doctor = await UserModel.findById(doctorId);
+        // Cancel appointment
+        await AppointmentModel.cancel(appointmentId, reasonText);
 
-      // Send email to patient
-      const emailTemplate = emailTemplates.appointmentCancelled(patient.name, doctor.name, cancelReason);
-      await sendEmail(patient.email, emailTemplate.subject, emailTemplate.html);
+        // Restore slot availability for other patients
+        await AppointmentSlotModel.markAsAvailable(appointment.slot_id);
 
-      // Create notification for patient
-      await NotificationModel.create(appointment.patient_id, 'appointment_cancelled', 
-        `Your appointment has been cancelled. Reason: ${cancelReason}`);
+        // Notify the doctor
+        const emailTemplate = emailTemplates.appointmentCancelledByPatient(patient.name, doctor.name, reasonText);
+        if (doctor?.email) {
+          await sendEmail(doctor.email, emailTemplate.subject, emailTemplate.html);
+        }
 
-      res.json({
-        message: 'Appointment cancelled successfully',
-        appointmentId
-      });
+        await NotificationModel.create(appointment.doctor_id, 'appointment_cancelled_by_patient',
+          `${patient.name} cancelled the appointment. Reason: ${reasonText}`);
+
+        return res.json({
+          message: 'Appointment cancelled successfully',
+          appointmentId
+        });
+      }
+
+      return res.status(403).json({ error: 'Invalid role' });
     } catch (error) {
       console.error('Cancel appointment error:', error);
       res.status(500).json({ error: error.message });
@@ -200,7 +233,7 @@ class AppointmentController {
   static async getAppointmentDetails(req, res) {
     try {
       const { appointmentId } = req.params;
-      const userId = req.user.id;
+      const userId = Number(req.user.id);
 
       const appointment = await AppointmentModel.getAppointmentDetails(appointmentId);
       if (!appointment) {
@@ -208,7 +241,7 @@ class AppointmentController {
       }
 
       // Verify user has access (patient or doctor of this appointment)
-      if (appointment.patient_id !== userId && appointment.doctor_id !== userId) {
+      if (Number(appointment.patient_id) !== userId && Number(appointment.doctor_id) !== userId) {
         return res.status(403).json({ error: 'Access denied' });
       }
 

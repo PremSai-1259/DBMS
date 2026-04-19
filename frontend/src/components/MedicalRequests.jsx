@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import useToast from '../hooks/useToast'
 import { profileService } from '../services/profileService'
 import DoctorProfileModal from './DoctorProfileModal'
@@ -8,6 +8,7 @@ const MedicalRequests = () => {
   const [loading, setLoading] = useState(true)
   const [selectedDoctorId, setSelectedDoctorId] = useState(null)
   const [respondingRequestId, setRespondingRequestId] = useState(null)
+  const actionLockRef = useRef(false)
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -26,71 +27,90 @@ const MedicalRequests = () => {
     }
   }
 
-  // Separate pending and approved requests
-  const pendingRequests = requests.filter(r => r.status === 'pending')
-  const approvedRequests = requests.filter(r => r.status === 'approved')
+  const pendingRequests = requests.filter((r) => r.status === 'pending')
+  const approvedRequests = requests.filter((r) => r.status === 'approved')
 
-  // Group approved requests by doctor
   const doctorsWithAccess = approvedRequests.reduce((acc, req) => {
-    const existing = acc.find(d => d.doctorId === req.doctorId)
+    const existing = acc.find((d) => d.doctorId === req.doctorId)
+    const fileEntry = {
+      id: req.id,
+      fileName: req.fileName,
+      expiresAt: req.expiresAt,
+    }
+
     if (existing) {
-      existing.files.push({
-        id: req.id,
-        fileName: req.fileName,
-        expiresAt: req.expiresAt
-      })
+      existing.files.push(fileEntry)
     } else {
       acc.push({
         doctorId: req.doctorId,
         doctorName: req.doctorName,
-        files: [{
-          id: req.id,
-          fileName: req.fileName,
-          expiresAt: req.expiresAt
-        }]
+        files: [fileEntry],
       })
     }
+
     return acc
   }, [])
 
-  const handleApprove = async (requestId) => {
+  const runExclusiveAction = async (requestId, action, successMessage, errorMessage) => {
+    if (actionLockRef.current) return
+
+    actionLockRef.current = true
     setRespondingRequestId(requestId)
+
     try {
-      await profileService.respondToMedicalRequest(requestId, 'approved')
-      showToast('Request approved', 'success')
-      loadRequests()
+      await action()
+      showToast(successMessage, 'success')
+      await loadRequests()
     } catch (error) {
-      showToast(error.response?.data?.error || 'Failed to approve request', 'error')
+      showToast(error.response?.data?.error || errorMessage, 'error')
     } finally {
       setRespondingRequestId(null)
+      actionLockRef.current = false
     }
+  }
+
+  const handleApprove = async (requestId) => {
+    await runExclusiveAction(
+      requestId,
+      () => profileService.respondToMedicalRequest(requestId, 'approved'),
+      'Request approved',
+      'Failed to approve request'
+    )
   }
 
   const handleReject = async (requestId) => {
-    setRespondingRequestId(requestId)
-    try {
-      await profileService.respondToMedicalRequest(requestId, 'rejected')
-      showToast('Request rejected', 'success')
-      loadRequests()
-    } catch (error) {
-      showToast(error.response?.data?.error || 'Failed to reject request', 'error')
-    } finally {
-      setRespondingRequestId(null)
-    }
+    await runExclusiveAction(
+      requestId,
+      () => profileService.respondToMedicalRequest(requestId, 'rejected'),
+      'Request rejected',
+      'Failed to reject request'
+    )
   }
 
-  const handleRevoke = async (requestId) => {
-    if (window.confirm('Are you sure you want to revoke access for this doctor?')) {
-      setRespondingRequestId(requestId)
-      try {
+  const handleRevokeAll = async (doctor) => {
+    if (actionLockRef.current) return
+
+    const requestIds = doctor.files.map((file) => file.id)
+    if (requestIds.length === 0) return
+
+    if (!window.confirm('Are you sure you want to revoke access for this doctor?')) {
+      return
+    }
+
+    actionLockRef.current = true
+    setRespondingRequestId(requestIds[0])
+
+    try {
+      for (const requestId of requestIds) {
         await profileService.revokeMedicalAccess(requestId)
-        showToast('Access revoked successfully', 'success')
-        loadRequests()
-      } catch (error) {
-        showToast(error.response?.data?.error || 'Failed to revoke access', 'error')
-      } finally {
-        setRespondingRequestId(null)
       }
+      showToast('Access revoked successfully', 'success')
+      await loadRequests()
+    } catch (error) {
+      showToast(error.response?.data?.error || 'Failed to revoke access', 'error')
+    } finally {
+      setRespondingRequestId(null)
+      actionLockRef.current = false
     }
   }
 
@@ -100,9 +120,11 @@ const MedicalRequests = () => {
     return date.toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     })
   }
+
+  const isBusy = actionLockRef.current || respondingRequestId !== null
 
   return (
     <>
@@ -113,19 +135,26 @@ const MedicalRequests = () => {
         />
       )}
 
-      <div className="space-y-6">
-        {/* PENDING REQUESTS SECTION */}
-        <div className="bg-white rounded-2xl p-8" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+      <div className={`space-y-6 ${isBusy ? 'cursor-wait' : ''}`}>
+        <div
+          className={`bg-white rounded-2xl p-8 ${isBusy ? 'pointer-events-none cursor-wait' : ''}`}
+          style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}
+        >
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-[#1a2a3a] flex items-center gap-2">
               📋 Medical Report Requests
               {pendingRequests.length > 0 && (
-                <span className="ml-auto text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fff4e6', color: '#b07a00' }}>
+                <span
+                  className="ml-auto text-xs font-medium px-2.5 py-1 rounded-full"
+                  style={{ background: '#fff4e6', color: '#b07a00' }}
+                >
                   {pendingRequests.length} pending
                 </span>
               )}
             </h3>
-            <p className="text-sm text-[#8a9ab0] mt-1">Manage pending requests from doctors for your medical records</p>
+            <p className="text-sm text-[#8a9ab0] mt-1">
+              Manage pending requests from doctors for your medical records
+            </p>
           </div>
 
           {loading ? (
@@ -136,11 +165,13 @@ const MedicalRequests = () => {
             <div className="text-center py-12">
               <div className="text-4xl mb-3">📁</div>
               <p className="text-[#8a9ab0] font-medium">No pending requests</p>
-              <p className="text-sm text-[#8a9ab0] mt-1">You'll see new requests here when doctors request access to your medical records</p>
+              <p className="text-sm text-[#8a9ab0] mt-1">
+                You'll see new requests here when doctors request access to your medical records
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {pendingRequests.map(req => (
+              {pendingRequests.map((req) => (
                 <div
                   key={req.id}
                   className="flex items-center justify-between gap-4 p-4 rounded-xl border border-[#e6ecf5] hover:border-[#3a7bd5] transition-all duration-200"
@@ -164,19 +195,19 @@ const MedicalRequests = () => {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       onClick={() => handleApprove(req.id)}
-                      disabled={respondingRequestId === req.id}
-                      className="px-3.5 py-2 rounded-lg text-xs font-medium text-white transition-all duration-200 hover:-translate-y-px disabled:opacity-50"
+                      disabled={isBusy}
+                      className="px-3.5 py-2 rounded-lg text-xs font-medium text-white transition-all duration-200 hover:-translate-y-px disabled:opacity-50 disabled:cursor-wait"
                       style={{ background: 'linear-gradient(135deg, #1a9e6a, #158a5a)' }}
                     >
-                      ✓ Approve
+                      {respondingRequestId === req.id ? 'Approving...' : 'Approve'}
                     </button>
                     <button
                       onClick={() => handleReject(req.id)}
-                      disabled={respondingRequestId === req.id}
-                      className="px-3.5 py-2 rounded-lg text-xs font-medium text-white transition-all duration-200 hover:-translate-y-px disabled:opacity-50"
+                      disabled={isBusy}
+                      className="px-3.5 py-2 rounded-lg text-xs font-medium text-white transition-all duration-200 hover:-translate-y-px disabled:opacity-50 disabled:cursor-wait"
                       style={{ background: 'linear-gradient(135deg, #e53e3e, #c53030)' }}
                     >
-                      ✗ Reject
+                      {respondingRequestId === req.id ? 'Rejecting...' : 'Reject'}
                     </button>
                   </div>
                 </div>
@@ -185,29 +216,38 @@ const MedicalRequests = () => {
           )}
         </div>
 
-        {/* DOCTORS WITH ACCESS SECTION */}
-        <div className="bg-white rounded-2xl p-8" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
+        <div
+          className={`bg-white rounded-2xl p-8 ${isBusy ? 'pointer-events-none cursor-wait' : ''}`}
+          style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}
+        >
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-[#1a2a3a] flex items-center gap-2">
               🔐 Doctors with Access
               {doctorsWithAccess.length > 0 && (
-                <span className="ml-auto text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#e6f9f2', color: '#1a9e6a' }}>
+                <span
+                  className="ml-auto text-xs font-medium px-2.5 py-1 rounded-full"
+                  style={{ background: '#e6f9f2', color: '#1a9e6a' }}
+                >
                   {doctorsWithAccess.length} doctor{doctorsWithAccess.length !== 1 ? 's' : ''}
                 </span>
               )}
             </h3>
-            <p className="text-sm text-[#8a9ab0] mt-1">Medical reports you've granted access to</p>
+            <p className="text-sm text-[#8a9ab0] mt-1">
+              Medical reports you've granted access to
+            </p>
           </div>
 
           {doctorsWithAccess.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-4xl mb-3">🚫</div>
               <p className="text-[#8a9ab0] font-medium">No approved access yet</p>
-              <p className="text-sm text-[#8a9ab0] mt-1">Doctors will appear here once you approve their requests</p>
+              <p className="text-sm text-[#8a9ab0] mt-1">
+                Doctors will appear here once you approve their requests
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {doctorsWithAccess.map(doctor => (
+              {doctorsWithAccess.map((doctor) => (
                 <div
                   key={doctor.doctorId}
                   className="p-4 rounded-xl border-l-4 transition-all duration-200 hover:shadow-md"
@@ -226,7 +266,7 @@ const MedicalRequests = () => {
                         </button>
                       </div>
                       <div className="space-y-1">
-                        {doctor.files.map(file => (
+                        {doctor.files.map((file) => (
                           <div key={file.id} className="text-xs text-[#1a7e5a]">
                             <div className="flex items-center justify-between">
                               <span>📄 {file.fileName}</span>
@@ -239,15 +279,12 @@ const MedicalRequests = () => {
                       </div>
                     </div>
                     <button
-                      onClick={() => {
-                        const requestIds = doctor.files.map(f => f.id)
-                        requestIds.forEach(id => handleRevoke(id))
-                      }}
-                      disabled={respondingRequestId !== null}
-                      className="px-3 py-2 rounded-lg text-xs font-medium text-[#1a7e5a] transition-all duration-200 hover:bg-white flex-shrink-0 disabled:opacity-50"
+                      onClick={() => handleRevokeAll(doctor)}
+                      disabled={isBusy}
+                      className="px-3 py-2 rounded-lg text-xs font-medium text-[#1a7e5a] transition-all duration-200 hover:bg-white flex-shrink-0 disabled:opacity-50 disabled:cursor-wait"
                       style={{ border: '1px solid #a8e6d5' }}
                     >
-                      Revoke All
+                      {respondingRequestId !== null ? 'Revoking...' : 'Revoke All'}
                     </button>
                   </div>
                 </div>

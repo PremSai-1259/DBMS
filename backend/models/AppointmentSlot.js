@@ -431,6 +431,51 @@ class AppointmentSlot {
       throw error;
     }
   }
+
+  /**
+   * Mark a slot as unavailable after doctor cancellation
+   * Keeps the record for history, but removes it from availability searches
+   * @param {number} slotId - Slot ID
+   * @returns {Promise<boolean>} True if successfully updated
+   */
+  static async markAsUnavailable(slotId) {
+    const query = `
+      UPDATE appointment_slots
+      SET is_available = FALSE, is_booked = FALSE
+      WHERE id = ?
+    `;
+
+    try {
+      const [result] = await db.execute(query, [slotId]);
+      console.log(`✅ Slot ${slotId} marked as unavailable`);
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error(`❌ Error marking slot ${slotId} as unavailable:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark a slot as available after patient cancellation
+   * @param {number} slotId - Slot ID
+   * @returns {Promise<boolean>} True if successfully updated
+   */
+  static async markAsAvailable(slotId) {
+    const query = `
+      UPDATE appointment_slots
+      SET is_available = TRUE, is_booked = FALSE
+      WHERE id = ?
+    `;
+
+    try {
+      const [result] = await db.execute(query, [slotId]);
+      console.log(`✅ Slot ${slotId} marked as available`);
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error(`❌ Error marking slot ${slotId} as available:`, error);
+      throw error;
+    }
+  }
 }
 
 module.exports = AppointmentSlot;

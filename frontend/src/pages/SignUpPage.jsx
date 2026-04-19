@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { signup } from '../services/authService'
 import useAuth from '../hooks/useAuth'
 import useToast from '../hooks/useToast'
@@ -40,7 +40,7 @@ const SignUpPage = () => {
     try {
       const { user } = await signup({ ...form, role })
       setUser(user)
-      showToast('Account created! Welcome to MediCore.', 'success')
+      showToast('Account created! Welcome to Patient Centric Data Governance and Appointment Platform.', 'success')
       if (user.role === 'doctor') {
         // Redirect doctors to profile setup page
         setTimeout(() => navigate('/doctor-profile-setup'), 600)
@@ -62,7 +62,7 @@ const SignUpPage = () => {
 
       <button onClick={() => navigate('/')}
         className="fixed top-6 left-8 flex items-center gap-1.5 text-sm text-[#4a5a6a] hover:text-[#3a7bd5] transition-colors">
-        ← MediCore
+        ← Patient Centric Data Governance and Appointment Platform
       </button>
 
       <div className="w-full max-w-[900px] flex rounded-3xl overflow-hidden min-h-[600px]"
@@ -78,7 +78,7 @@ const SignUpPage = () => {
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-base"
                 style={{ background: 'rgba(255,255,255,0.15)' }}>✚</div>
               <span className="text-white text-xl font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                MediCore
+                Patient Centric Data Governance and Appointment Platform
               </span>
             </div>
             <h2 className="text-white text-[38px] font-medium leading-tight mb-4 tracking-tight"

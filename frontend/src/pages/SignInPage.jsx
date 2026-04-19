@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { login } from '../services/authService'
 import useAuth from '../hooks/useAuth'
 import useToast from '../hooks/useToast'
@@ -7,7 +7,6 @@ import Toast from '../components/Toast'
 
 const SignInPage = () => {
   const navigate = useNavigate()
-  const location = useLocation()
   const { login: setUser } = useAuth()
   const { toast, showToast } = useToast()
 
@@ -50,7 +49,7 @@ const SignInPage = () => {
       {/* Back to home */}
       <button onClick={() => navigate('/')}
         className="fixed top-6 left-8 flex items-center gap-1.5 text-sm text-[#4a5a6a] hover:text-[#3a7bd5] transition-colors">
-        ← MediCore
+        ← Patient Centric Data Governance and Appointment Platform
       </button>
 
       <div className="w-full max-w-[900px] flex rounded-3xl overflow-hidden min-h-[580px]"
@@ -70,7 +69,7 @@ const SignInPage = () => {
                 ✚
               </div>
               <span className="text-white text-xl font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                MediCore
+                Patient Centric Data Governance and Appointment Platform
               </span>
             </div>
             <h2 className="text-white text-[40px] font-medium leading-tight mb-4 tracking-tight"

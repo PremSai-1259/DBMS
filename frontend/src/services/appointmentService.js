@@ -205,7 +205,7 @@ export const getAppointmentById = async (appointmentId) => {
 }
 
 /**
- * Cancel an appointment
+ * Cancel an appointment as a patient
  * @param {number} appointmentId - ID of appointment to cancel
  * @param {string} reason - Optional reason for cancellation
  * @returns {Promise<Object>} Updated appointment data
@@ -219,7 +219,7 @@ export const cancelAppointment = async (appointmentId, reason = '') => {
 
     // Make API request
     const response = await api.put(`/appointments/cancel/${appointmentId}`, {
-      reason: reason || 'No reason provided',
+      cancelReason: reason || 'No reason provided',
     })
 
     console.log('Appointment cancelled successfully:', response.data)
@@ -309,6 +309,53 @@ export const addConsultationNote = async (appointmentId, noteData) => {
   }
 }
 
+/**
+ * Doctor-cancel an appointment with a required reason
+ * @param {number} appointmentId - Appointment ID
+ * @param {string} cancelReason - Reason shown to the patient
+ * @returns {Promise<Object>} Updated appointment data
+ */
+export const doctorCancelAppointment = async (appointmentId, cancelReason) => {
+  try {
+    if (!appointmentId) {
+      throw new Error('Appointment ID is required')
+    }
+
+    if (!cancelReason || !cancelReason.trim()) {
+      throw new Error('Cancellation reason is required')
+    }
+
+    const response = await api.put(`/appointments/cancel/${appointmentId}`, {
+      cancelReason: cancelReason.trim(),
+    })
+
+    return response.data
+  } catch (error) {
+    if (error.response) {
+      const message = error.response.data?.message || error.response.data?.error || 'Failed to cancel appointment'
+      const status = error.response.status
+
+      if (status === 400) {
+        throw new Error(`Cannot cancel: ${message}`)
+      } else if (status === 401) {
+        throw new Error('Please login to cancel appointments')
+      } else if (status === 403) {
+        throw new Error(message)
+      } else if (status === 404) {
+        throw new Error('Appointment not found')
+      } else if (status === 500) {
+        throw new Error('Server error. Please try again later.')
+      }
+
+      throw new Error(message)
+    } else if (error.request) {
+      throw new Error('Unable to reach server. Please check your connection.')
+    } else {
+      throw error
+    }
+  }
+}
+
 export const updateConsultationNote = async (consultationId, noteData) => {
   try {
     if (!consultationId || !noteData) {
@@ -360,6 +407,7 @@ export default {
   getAppointments,
   getAppointmentById,
   cancelAppointment,
+  doctorCancelAppointment,
   rescheduleAppointment,
   addConsultationNote,
   updateConsultationNote,

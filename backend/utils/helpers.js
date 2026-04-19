@@ -93,6 +93,18 @@ const emailTemplates = {
     `
   }),
 
+  appointmentCancelledByPatient: (patientName, doctorName, reason) => ({
+    subject: 'Patient Cancelled the Appointment',
+    html: `
+      <h2>Appointment Cancelled by Patient</h2>
+      <p>Hello Dr. ${doctorName},</p>
+      <p>${patientName} has cancelled the appointment.</p>
+      <p><strong>Reason:</strong> ${reason || 'Not specified'}</p>
+      <p>The slot is now available for other patients.</p>
+      <p>Best regards,<br>Healthcare Platform Team</p>
+    `
+  }),
+
   accessApproved: (patientName, doctorName) => ({
     subject: 'Medical Record Access Granted',
     html: `

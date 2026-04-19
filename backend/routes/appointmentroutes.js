@@ -9,7 +9,7 @@ router.post('/book', authMiddleware, roleMiddleware(['patient']),
   AppointmentController.bookAppointment);
 
 // PUT /appointments/cancel/:id
-router.put('/cancel/:appointmentId', authMiddleware, roleMiddleware(['doctor']), 
+router.put('/cancel/:appointmentId', authMiddleware, 
   AppointmentController.cancelAppointment);
 
 // GET /appointments

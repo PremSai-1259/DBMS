@@ -6,11 +6,18 @@ import Toast from '../components/Toast'
 import ScheduleManager from '../components/ScheduleManager'
 import PatientProfileModal from '../components/PatientProfileModal'
 import DoctorAccessReports from '../components/DoctorAccessReports'
-import { getAppointments, addConsultationNote, updateConsultationNote } from '../services/appointmentService'
+import { getAppointments, addConsultationNote, updateConsultationNote, doctorCancelAppointment } from '../services/appointmentService'
 import { profileService } from '../services/profileService'
 import { slotService } from '../services/slotService'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+const formatLocalDateKey = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 const DoctorDashboard = () => {
   const navigate = useNavigate()
@@ -30,6 +37,9 @@ const DoctorDashboard = () => {
   const [selectedPatientId, setSelectedPatientId] = useState(null)
   const [consultationAppointment, setConsultationAppointment] = useState(null)
   const [consultationSaving, setConsultationSaving] = useState(false)
+  const [cancelAppointmentTarget, setCancelAppointmentTarget] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelSaving, setCancelSaving] = useState(false)
   const [consultationForm, setConsultationForm] = useState({
     reasonForVisit: '',
     diagnosis: '',
@@ -39,7 +49,7 @@ const DoctorDashboard = () => {
   const [activeDayIdx, setActiveDayIdx] = useState(0)
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(() => {
     const today = new Date()
-    return today.toISOString().split('T')[0]
+    return formatLocalDateKey(today)
   })
 
   // Load approval status on mount
@@ -110,6 +120,17 @@ const DoctorDashboard = () => {
     })
   }
 
+  const openCancelModal = (appointment) => {
+    setCancelAppointmentTarget(appointment)
+    setCancelReason('')
+  }
+
+  const closeCancelModal = (force = false) => {
+    if (cancelSaving && !force) return
+    setCancelAppointmentTarget(null)
+    setCancelReason('')
+  }
+
   const handleConsultationChange = (field) => (event) => {
     setConsultationForm((prev) => ({ ...prev, [field]: event.target.value }))
   }
@@ -136,9 +157,36 @@ const DoctorDashboard = () => {
     }
   }
 
-  const displayName = profile
-    ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim()
-    : user ? `${user.name || user.firstName || ''}` : 'Doctor'
+  const cancelDoctorAppointment = async () => {
+    if (!cancelAppointmentTarget?.id || !cancelReason.trim()) {
+      showToast('Please provide a cancellation reason', 'error')
+      return
+    }
+
+    setCancelSaving(true)
+    closeCancelModal(true)
+    try {
+      await doctorCancelAppointment(cancelAppointmentTarget.id, cancelReason)
+      showToast('Appointment cancelled and patient notified', 'success')
+      await loadAll()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setCancelSaving(false)
+    }
+  }
+
+  const doctorName = (() => {
+    const candidates = [
+      [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim(),
+      [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim(),
+      profile?.name?.trim(),
+      user?.name?.trim(),
+    ].filter(Boolean)
+
+    const realName = candidates.find(name => name && name.toLowerCase() !== 'doctor')
+    return realName || candidates[0] || 'Doctor'
+  })()
 
   const specialization = approvalStatus?.doctorProfile?.specialization || 'Pending Verification'
   const getAppointmentStart = (appointment) => {
@@ -367,6 +415,16 @@ const DoctorDashboard = () => {
           onSave={saveConsultation}
         />
       )}
+      {cancelAppointmentTarget && (
+        <CancelAppointmentModal
+          appointment={cancelAppointmentTarget}
+          reason={cancelReason}
+          saving={cancelSaving}
+          onReasonChange={setCancelReason}
+          onClose={closeCancelModal}
+          onCancel={cancelDoctorAppointment}
+        />
+      )}
 
       {/* TOP NAV */}
       <nav className="fixed top-0 left-0 right-0 z-40 h-16 flex items-center justify-between px-8"
@@ -375,14 +433,14 @@ const DoctorDashboard = () => {
           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-sm"
             style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}>✚</div>
           <span className="text-[#2d5a8e] text-xl font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-            MediCore
+            Patient Centric Data Governance and Appointment Platform
           </span>
         </div>
         <div className="flex items-center gap-3">
           <span className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#e6f9f2', color: '#1a9e6a' }}>
             ✓ Approved
           </span>
-          <span className="text-sm text-[#4a5a6a]">Dr. {displayName.split(' ')[1] || displayName.split(' ')[0]}</span>
+          <span className="text-sm text-[#4a5a6a]">Dr. {doctorName}</span>
           <button onClick={handleLogout}
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-[#4a5a6a] hover:text-[#3a7bd5] hover:bg-[#e8f0fb] transition-all">
             Sign Out
@@ -399,7 +457,7 @@ const DoctorDashboard = () => {
               style={{ background: 'linear-gradient(135deg, #e8f0fb, #e6ecf5)' }}>
               👨‍⚕️
             </div>
-            <h4 className="text-[15px] font-semibold text-[#1a2a3a]">Dr. {displayName}</h4>
+            <h4 className="text-[15px] font-semibold text-[#1a2a3a]">Dr. {doctorName}</h4>
             <span className="text-xs text-[#8a9ab0]">{specialization}</span>
           </div>
           <nav className="flex flex-col gap-0.5 px-3 flex-1">
@@ -429,9 +487,8 @@ const DoctorDashboard = () => {
             <div>
               <div className="mb-7">
                 <h2 className="text-2xl font-semibold text-[#1a2a3a]">
-                  Good morning, Dr. {displayName.split(' ').slice(-1)[0]} 👋
+                  Hi, Dr. {doctorName} 👋
                 </h2>
-                <p className="text-sm text-[#8a9ab0] mt-1">Here's your practice summary for today</p>
               </div>
 
               {/* Stats */}
@@ -483,6 +540,16 @@ const DoctorDashboard = () => {
                               style={{ border: '1px solid #c9dff0' }}
                             >
                               View Patient
+                            </button>
+                          )}
+                          {apt.status !== 'cancelled' && apt.status !== 'completed' && (
+                            <button
+                              onClick={() => openCancelModal(apt)}
+                              className="rounded-xl px-3 py-2 text-xs font-medium text-[#e53e3e] transition-all duration-200 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ border: '1px solid #f3c1c1' }}
+                              disabled={cancelSaving}
+                            >
+                              Cancel
                             </button>
                           )}
                           <span className="text-xs font-medium px-2.5 py-1 rounded-full capitalize"
@@ -582,6 +649,16 @@ const DoctorDashboard = () => {
                               style={{ border: '1px solid #d7e3f3' }}
                             >
                               View Patient
+                            </button>
+                          )}
+                          {apt.status !== 'cancelled' && apt.status !== 'completed' && (
+                            <button
+                              onClick={() => openCancelModal(apt)}
+                              className="rounded-xl px-3 py-2 text-xs font-medium text-[#e53e3e] transition-all duration-200 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ border: '1px solid #f3c1c1' }}
+                              disabled={cancelSaving}
+                            >
+                              Cancel
                             </button>
                           )}
                           <button
@@ -758,7 +835,7 @@ const DoctorDashboard = () => {
                   {Array.from({ length: 7 }, (_, i) => {
                     const date = new Date()
                     date.setDate(date.getDate() + i)
-                    const dateStr = date.toISOString().split('T')[0]
+                    const dateStr = formatLocalDateKey(date)
                     const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
                     const dayNum = date.getDate()
                     const isSelected = dateStr === selectedScheduleDate
@@ -895,6 +972,82 @@ const ConsultationModal = ({ appointment, form, saving, onChange, onClose, onSav
               : appointment?.consultation?.id
               ? 'Update Notes'
               : 'Save Notes & Complete Appointment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const CancelAppointmentModal = ({ appointment, reason, saving, onReasonChange, onClose, onCancel }) => {
+  const patientName = appointment?.patient?.name || appointment?.patientName || 'Patient'
+  const patientEmail = appointment?.patient?.email || appointment?.patientEmail || ''
+  const time = appointment?.slot?.time || appointment?.time || '—'
+  const date = appointment?.date || appointment?.slot?.date
+  const dateStr = date ? new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+
+  return (
+    <div
+      className="fixed inset-0 z-[260] flex items-center justify-center p-4"
+      style={{ background: 'rgba(20, 40, 80, 0.45)', backdropFilter: 'blur(6px)', cursor: saving ? 'wait' : 'default' }}
+      onClick={(e) => e.target === e.currentTarget && !saving && onClose()}
+    >
+      <div
+        className="w-full max-w-xl rounded-3xl bg-white p-8"
+        style={{ boxShadow: '0 30px 80px rgba(20, 40, 80, 0.24)' }}
+      >
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-2xl font-semibold text-[#1a2a3a]">
+              Cancel Appointment
+            </h3>
+            <p className="mt-1 text-sm text-[#8a9ab0]">
+              {patientName} · {dateStr} · {time}
+            </p>
+            {patientEmail && <p className="mt-1 text-sm text-[#8a9ab0]">{patientEmail}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl px-4 py-2 text-sm font-medium text-[#4a5a6a] transition-all duration-200 hover:bg-[#f8f9fc] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="rounded-2xl border border-[#f1d6d6] bg-[#fff7f7] px-4 py-3 text-sm text-[#b94a48]">
+          The patient will be notified automatically with the reason you enter below.
+        </div>
+
+        <label className="mt-5 block">
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[#8a9ab0]">
+            Cancellation Reason
+          </span>
+          <textarea
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
+            rows={5}
+            className="w-full rounded-2xl border border-[#d0daea] bg-[#f8f9fc] px-4 py-3 text-sm text-[#1a2a3a] outline-none transition-all duration-200 focus:border-[#e53e3e] focus:bg-white"
+            placeholder="For example: doctor unavailable, emergency, reschedule required, or any other reason"
+            disabled={saving}
+          />
+        </label>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl border border-[#d0daea] px-4 py-2.5 text-sm font-medium text-[#4a5a6a] transition-all duration-200 hover:bg-[#f8f9fc] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Keep Appointment
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={saving || !reason.trim()}
+            className="rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: 'linear-gradient(135deg, #e53e3e, #c53030)' }}
+          >
+            {saving ? 'Cancelling...' : 'Cancel Appointment'}
           </button>
         </div>
       </div>

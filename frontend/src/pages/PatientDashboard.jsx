@@ -7,7 +7,7 @@ import BookingModal from '../components/BookingModal'
 import FileUploadModal from '../components/FileUploadModal'
 import MedicalRequests from '../components/MedicalRequests'
 import { getAllDoctorsWithSlots, searchDoctors } from '../services/doctorService'
-import { getAppointments, cancelAppointment } from '../services/appointmentService'
+import { getAppointments } from '../services/appointmentService'
 import { profileService } from '../services/profileService'
 
 const EMOJI_MAP = {
@@ -32,6 +32,7 @@ const PatientDashboard = () => {
   const [bookingDoctor, setBookingDoctor] = useState(null)
   const [profile, setProfile] = useState(null)
   const [profileMissing, setProfileMissing] = useState(false)
+  const [uploadBanner, setUploadBanner] = useState(null)
   const profileFilesListRef = useRef(null)
 
   useEffect(() => {
@@ -43,10 +44,20 @@ const PatientDashboard = () => {
     if (tab === 'appointments') loadAppointments()
   }, [tab])
 
+  useEffect(() => {
+    if (!uploadBanner) return undefined
+
+    const timer = setTimeout(() => {
+      setUploadBanner(null)
+    }, 4000)
+
+    return () => clearTimeout(timer)
+  }, [uploadBanner])
+
   const loadProfile = async () => {
     try {
       const res = await profileService.getProfile()
-      setProfile(res.data)
+      setProfile(res.data?.profile || res.data)
       setProfileMissing(false)
     } catch (err) {
       if (err.response?.status === 404) {
@@ -121,19 +132,17 @@ const PatientDashboard = () => {
     }
   }
 
-  const handleCancelAppointment = async (id) => {
-    try {
-      await cancelAppointment(id)
-      showToast('Appointment cancelled', 'success')
-      loadAppointments()
-    } catch (err) {
-      showToast(err.message, 'error')
-    }
-  }
-
   const handleLogout = () => {
     logout()
     navigate('/')
+  }
+
+  const handleFileUploaded = (fileName) => {
+    profileFilesListRef.current?.loadFiles()
+    setUploadBanner({
+      fileName: fileName || 'Medical file',
+      timestamp: Date.now(),
+    })
   }
 
   const displayName = profile?.name 
@@ -141,6 +150,11 @@ const PatientDashboard = () => {
     : user?.name 
       ? user.name 
       : 'Patient'
+
+  const patientAge = profile?.age ? `${profile.age} years` : '—'
+  const patientGender = profile?.gender || '—'
+  const patientPhone = profile?.phone || '—'
+  const patientBloodGroup = profile?.blood_group || profile?.bloodGroup || '—'
 
   const upcoming = appointments.filter(a => a.status === 'pending' || a.status === 'confirmed' || a.status === 'upcoming')
   const past = appointments.filter(a => a.status === 'completed' || a.status === 'cancelled')
@@ -169,7 +183,7 @@ const PatientDashboard = () => {
           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-sm"
             style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}>✚</div>
           <span className="text-[#2d5a8e] text-xl font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-            MediCore
+            Patient Centric Data Governance and Appointment Platform
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -331,7 +345,7 @@ const PatientDashboard = () => {
                   ) : (
                     <div className="flex flex-col gap-3 mb-8">
                       {upcoming.map(apt => (
-                        <AppointmentCard key={apt.id || apt._id} apt={apt} onCancel={() => handleCancelAppointment(apt.id || apt._id)} />
+                        <AppointmentCard key={apt.id || apt._id} apt={apt} />
                       ))}
                     </div>
                   )}
@@ -360,21 +374,39 @@ const PatientDashboard = () => {
                 <h2 className="text-2xl font-semibold text-[#1a2a3a]">My Profile</h2>
                 <p className="text-sm text-[#8a9ab0] mt-1">Your account information</p>
               </div>
+              {uploadBanner && (
+                <div
+                  className="mb-6 flex items-center justify-between gap-4 rounded-2xl px-4 py-3"
+                  style={{
+                    background: 'linear-gradient(135deg, #e6f9f2, #f2fbf7)',
+                    border: '1px solid #a8e6d5',
+                    boxShadow: '0 6px 20px rgba(26,158,106,0.08)',
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#1a7e5a]">File uploaded successfully</p>
+                    <p className="text-xs text-[#4a5a6a] truncate">
+                      {uploadBanner.fileName} is now available in your medical files.
+                    </p>
+                  </div>
+                  <span className="flex-shrink-0 rounded-full bg-white px-3 py-1 text-xs font-medium text-[#1a9e6a]">
+                    New
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 {/* Profile Details - Left */}
                 <div className="bg-white rounded-2xl p-8" style={{ border: '1px solid #e6ecf5', boxShadow: '0 4px 24px rgba(45,90,142,0.08)' }}>
                   <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-4"
                     style={{ background: 'linear-gradient(135deg, #e8f0fb, #e6ecf5)' }}>👤</div>
                   <h3 className="text-lg font-semibold text-[#1a2a3a] mb-1">{displayName}</h3>
-                  <p className="text-sm text-[#8a9ab0] mb-6">{user?.email}</p>
+                  <p className="text-sm text-[#8a9ab0] mb-6">Patient profile details</p>
                   <div className="grid grid-cols-2 gap-4">
                     {[
-                      ['Role', 'Patient'],
-                      ['Email', user?.email || '—'],
-                      ['Phone', profile?.phone || '—'],
-                      ['Age', profile?.age ? `${profile?.age} years` : '—'],
-                      ['Gender', profile?.gender || '—'],
-                      ['Blood Group', profile?.blood_group || '—']
+                      ['Phone', patientPhone],
+                      ['Age', patientAge],
+                      ['Gender', patientGender],
+                      ['Blood Group', patientBloodGroup]
                     ].map(([label, val]) => (
                       <div key={label} className="py-3 px-3 rounded-lg" style={{ background: '#f8f9fc' }}>
                         <span className="block text-xs font-medium text-[#8a9ab0] uppercase tracking-wide mb-1">{label}</span>
@@ -386,7 +418,7 @@ const PatientDashboard = () => {
 
                 {/* File Upload - Right */}
                 <FileUploadModal 
-                  onFileUploaded={() => profileFilesListRef.current?.loadFiles()} 
+                  onFileUploaded={handleFileUploaded} 
                 />
               </div>
 
@@ -450,7 +482,7 @@ const DoctorCard = ({ doctor, onBook }) => {
   )
 }
 
-const AppointmentCard = ({ apt, onCancel, past }) => {
+const AppointmentCard = ({ apt, past }) => {
   const date = apt.date ? new Date(apt.date) : apt.slot?.date ? new Date(apt.slot.date) : null
   const dateStr = date ? date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'
   const day = date ? date.getDate() : '—'
@@ -467,6 +499,12 @@ const AppointmentCard = ({ apt, onCancel, past }) => {
   const doctorName = apt.doctor?.name || apt.doctorName || 'Doctor'
   const specialization = apt.doctor?.specialization || apt.specialization || ''
   const time = apt.slot?.time || apt.time || '—'
+  const isCompleted = apt.status === 'completed'
+  const isCancelled = apt.status === 'cancelled'
+
+  const hasConsultationNotes = Boolean(
+    apt.reasonForVisit || apt.diagnosis || apt.prescription || apt.additionalNotes
+  )
 
   return (
     <div className="bg-white rounded-2xl p-4 flex items-center gap-4"
@@ -481,18 +519,58 @@ const AppointmentCard = ({ apt, onCancel, past }) => {
           {doctorName}{specialization && ` — ${specialization}`}
         </h4>
         <span className="text-xs text-[#8a9ab0]">{time}</span>
+        {(isCompleted || isCancelled) && (
+          <div className="mt-3 rounded-xl border border-[#e6ecf5] bg-[#f8f9fc] p-3">
+            {isCompleted && hasConsultationNotes && (
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#3a7bd5]">
+                  Consultation Notes
+                </div>
+                {apt.reasonForVisit && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Reason for Visit</div>
+                    <div className="text-sm text-[#1a2a3a]">{apt.reasonForVisit}</div>
+                  </div>
+                )}
+                {apt.diagnosis && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Diagnosis</div>
+                    <div className="text-sm text-[#1a2a3a]">{apt.diagnosis}</div>
+                  </div>
+                )}
+                {apt.prescription && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Prescription</div>
+                    <div className="text-sm text-[#1a2a3a] whitespace-pre-wrap">{apt.prescription}</div>
+                  </div>
+                )}
+                {apt.additionalNotes && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[#8a9ab0]">Additional Notes</div>
+                    <div className="text-sm text-[#1a2a3a] whitespace-pre-wrap">{apt.additionalNotes}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isCancelled && (
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#e53e3e]">
+                  Cancellation Reason
+                </div>
+                <div className="text-sm text-[#1a2a3a] whitespace-pre-wrap">
+                  {apt.cancelReason || 'No cancellation reason provided'}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium px-2.5 py-1 rounded-full capitalize"
           style={{ background: statusColor.bg, color: statusColor.color }}>
           {apt.status}
         </span>
-        {!past && onCancel && (
-          <button onClick={onCancel}
-            className="text-xs text-[#8a9ab0] hover:text-red-400 transition-colors px-2 py-1">
-            Cancel
-          </button>
-        )}
       </div>
     </div>
   )

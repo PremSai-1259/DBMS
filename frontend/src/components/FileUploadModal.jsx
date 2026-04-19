@@ -47,7 +47,7 @@ const FileUploadModal = ({ onFileUploaded, onClose }) => {
       // Reset form
       setSelectedFile(null)
       // Trigger callback to refresh file list in parent
-      onFileUploaded?.()
+      onFileUploaded?.(res.data?.fileName || selectedFile.name)
     } catch (err) {
       showToast(err.message || 'Failed to upload file', 'error')
     } finally {

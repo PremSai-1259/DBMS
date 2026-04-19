@@ -1,18 +1,22 @@
-import { useState, useEffect } from 'react';
-import { scheduleService } from '../services/scheduleService';
-import useToast from '../hooks/useToast';
+import { useEffect, useState } from 'react'
+import { scheduleService } from '../services/scheduleService'
+import useToast from '../hooks/useToast'
+
+const parseLocalDate = (dateString) => {
+  if (!dateString) return null
+  const [year, month, day] = dateString.split('-').map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day)
+}
 
 const ScheduleManager = ({ selectedDate }) => {
-  const [slots, setSlots] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [localChanges, setLocalChanges] = useState({});
-  const [hasSetupBefore, setHasSetupBefore] = useState(true);
-  const [isUsingFallback, setIsUsingFallback] = useState(false);
-  const { showToast } = useToast();
+  const [slots, setSlots] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [localChanges, setLocalChanges] = useState({})
+  const [isUsingFallback, setIsUsingFallback] = useState(false)
+  const { showToast } = useToast()
 
-  // Generate all 24 slots as fallback when API fails
   const generateFallbackSlots = () => {
     const slotTimes = [
       { slot: 1, start: '08:00', end: '08:30' },
@@ -37,567 +41,388 @@ const ScheduleManager = ({ selectedDate }) => {
       { slot: 22, start: '18:30', end: '19:00' },
       { slot: 23, start: '19:00', end: '19:30' },
       { slot: 24, start: '19:30', end: '20:00' },
-    ];
+    ]
 
     const convertTo12Hour = (time24) => {
-      const [hours, minutes] = time24.split(':').map(Number);
-      const period = hours >= 12 ? 'PM' : 'AM';
-      const displayHours = hours % 12 || 12;
-      return `${String(displayHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`;
-    };
+      const [hours, minutes] = time24.split(':').map(Number)
+      const period = hours >= 12 ? 'PM' : 'AM'
+      const displayHours = hours % 12 || 12
+      return `${String(displayHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`
+    }
 
-    return slotTimes.map(slot => ({
+    return slotTimes.map((slot) => ({
       slotNumber: slot.slot,
       startTime: slot.start,
       endTime: slot.end,
       displayTime: `${convertTo12Hour(slot.start)} - ${convertTo12Hour(slot.end)}`,
       isAvailable: false,
       isBooked: false,
-    }));
-  };
-
-  // Load slots for the selected date
-  useEffect(() => {
-    loadSlots();
-  }, [selectedDate]);
+    }))
+  }
 
   const loadSlots = async () => {
-    setLoading(true);
-    setError(null);
-    setIsUsingFallback(false);
+    setLoading(true)
+    setIsUsingFallback(false)
     try {
-      const response = await scheduleService.getSlotsForDate(selectedDate);
-      const loadedSlots = response?.data?.slots || [];
-      
+      const response = await scheduleService.getSlotsForDate(selectedDate)
+      const loadedSlots = response?.data?.slots || []
+
       if (!Array.isArray(loadedSlots) || loadedSlots.length === 0) {
-        console.warn('No slots received from API, using fallback', response);
-        // Use fallback slots when API returns empty
-        const fallbackSlots = generateFallbackSlots();
-        setSlots(fallbackSlots);
-        setIsUsingFallback(true);
-        setHasSetupBefore(false);
+        setSlots(generateFallbackSlots())
+        setIsUsingFallback(true)
       } else {
-        setSlots(loadedSlots);
-        setError(null);
-        setIsUsingFallback(false);
-        // Check if doctor has set any availability before on this date
-        const hasAnyAvailable = loadedSlots.some(s => s.isAvailable);
-        setHasSetupBefore(hasAnyAvailable);
+        setSlots(loadedSlots)
       }
-      setLocalChanges({});
+
+      setLocalChanges({})
     } catch (error) {
-      console.error('Failed to load slots:', error);
-      // Use fallback slots when API fails
-      const fallbackSlots = generateFallbackSlots();
-      setSlots(fallbackSlots);
-      setIsUsingFallback(true);
-      setHasSetupBefore(false);
-      showToast('Using default schedule (API error - changes will be saved locally)', 'warning');
+      console.error('Failed to load slots:', error)
+      setSlots(generateFallbackSlots())
+      setIsUsingFallback(true)
+      showToast('Using default schedule (API error - changes will be saved locally)', 'warning')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
+
+  useEffect(() => {
+    loadSlots()
+  }, [selectedDate])
 
   const handleToggleSlot = (slotNumber) => {
-    const slot = slots.find(s => s.slotNumber === slotNumber);
-    if (!slot) return;
+    const slot = slots.find((s) => s.slotNumber === slotNumber)
+    if (!slot) return
 
-    const newStatus = !slot.isAvailable;
-    
-    // Update local state
-    setSlots(slots.map(s =>
-      s.slotNumber === slotNumber
-        ? { ...s, isAvailable: newStatus }
-        : s
-    ));
-
-    // Track local changes
-    setLocalChanges({
-      ...localChanges,
-      [slotNumber]: newStatus,
-    });
-  };
-
-  const handleSaveChanges = async () => {
-    console.log('💾 Save button clicked');
-    console.log('📊 Local changes:', localChanges);
-    console.log('📊 Changes count:', Object.keys(localChanges).length);
-
-    if (Object.keys(localChanges).length === 0) {
-      console.warn('⚠️ No changes to save');
-      showToast('No changes to save', 'warning');
-      return;
-    }
-
-    // Get all currently available slots
-    const availableSlots = slots.filter(s => s.isAvailable);
-    console.log('✅ Currently available slots:', availableSlots.map(s => s.slotNumber));
-
-    if (availableSlots.length === 0) {
-      console.warn('⚠️ No available slots selected');
-      showToast('Please set at least one slot as available before saving', 'warning');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      // Convert available slots to the format expected by API
-      const slotsToSave = {};
-      availableSlots.forEach(slot => {
-        slotsToSave[slot.slotNumber] = true;
-      });
-
-      console.log('📤 Sending to API:');
-      console.log('   - selectedDate:', selectedDate);
-      console.log('   - slotsToSave:', slotsToSave);
-      console.log('   - availableCount:', availableSlots.length);
-
-      const response = await scheduleService.updateMultipleSlots(selectedDate, slotsToSave);
-      
-      console.log('✅ API Response:', response?.data);
-      
-      setLocalChanges({});
-      setHasSetupBefore(true);
-      setIsUsingFallback(false);
-      
-      // Build detailed success message
-      const slotList = availableSlots.map(s => `${s.slotNumber} (${s.displayTime})`).join(', ');
-      showToast(
-        `✓ Schedule saved! ${availableSlots.length} slot(s) available: ${slotList}`,
-        'success'
-      );
-      
-      console.log(`✅ Schedule saved successfully`);
-    } catch (error) {
-      console.error('❌ Failed to save changes:', error);
-      const errorMsg = error?.response?.data?.error || error.message || 'Unknown error';
-      console.error('   Error details:', errorMsg);
-      showToast('Failed to save schedule: ' + errorMsg, 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
+    const newStatus = !slot.isAvailable
+    setSlots((prev) => prev.map((s) => (s.slotNumber === slotNumber ? { ...s, isAvailable: newStatus } : s)))
+    setLocalChanges((prev) => ({ ...prev, [slotNumber]: newStatus }))
+  }
 
   const handleSelectAll = () => {
-    const allSlots = {};
-    slots.forEach(s => {
-      allSlots[s.slotNumber] = true;
-    });
-    setSlots(slots.map(s => ({ ...s, isAvailable: true })));
-    setLocalChanges(allSlots);
-  };
+    const changes = {}
+    setSlots((prev) =>
+      prev.map((slot) => {
+        changes[slot.slotNumber] = true
+        return { ...slot, isAvailable: true }
+      })
+    )
+    setLocalChanges(changes)
+  }
 
   const handleDeselectAll = () => {
-    const allSlots = {};
-    slots.forEach(s => {
-      allSlots[s.slotNumber] = false;
-    });
-    setSlots(slots.map(s => ({ ...s, isAvailable: false })));
-    setLocalChanges(allSlots);
-  };
+    const changes = {}
+    setSlots((prev) =>
+      prev.map((slot) => {
+        changes[slot.slotNumber] = false
+        return { ...slot, isAvailable: false }
+      })
+    )
+    setLocalChanges(changes)
+  }
 
-  // Helper function to check if a slot time has passed
+  const handleSaveChanges = async () => {
+    if (Object.keys(localChanges).length === 0) {
+      showToast('No changes to save', 'warning')
+      return
+    }
+
+    const availableSlots = slots.filter((slot) => slot.isAvailable)
+    if (availableSlots.length === 0) {
+      showToast('Please set at least one slot as available before saving', 'warning')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const slotsToSave = {}
+      availableSlots.forEach((slot) => {
+        slotsToSave[slot.slotNumber] = true
+      })
+
+      await scheduleService.updateMultipleSlots(selectedDate, slotsToSave)
+      setLocalChanges({})
+      setIsUsingFallback(false)
+      showToast(`Schedule saved. ${availableSlots.length} slot(s) available.`, 'success')
+    } catch (error) {
+      const errorMsg = error?.response?.data?.error || error.message || 'Unknown error'
+      showToast('Failed to save schedule: ' + errorMsg, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const isSlotExpired = (slotStartTime) => {
-    const now = new Date();
-    const selectedDateTime = new Date(selectedDate);
-    
-    // If the selected date is in the past, all slots are expired
-    if (selectedDateTime < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
-      return true;
-    }
-    
-    // If it's today, check if the slot time has passed
-    if (selectedDateTime.toDateString() === now.toDateString()) {
-      const [hours, minutes] = slotStartTime.split(':').map(Number);
-      const slotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
-      return slotTime < now;
-    }
-    
-    return false;
-  };
+    const now = new Date()
+    const selectedDateTime = parseLocalDate(selectedDate)
+    if (!selectedDateTime) return false
 
-  // Helper function to get slot status styles
+    if (selectedDateTime < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+      return true
+    }
+
+    if (selectedDateTime.toDateString() === now.toDateString()) {
+      const [hours, minutes] = slotStartTime.split(':').map(Number)
+      const slotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes)
+      return slotTime < now
+    }
+
+    return false
+  }
+
   const getSlotStyle = (slot) => {
-    const isExpired = isSlotExpired(slot.startTime);
-    
+    const isExpired = isSlotExpired(slot.startTime)
+
     if (isExpired) {
-      // Expired/Completed - Grey
       return {
         background: '#d1d5db',
         borderColor: '#9ca3af',
         textColor: '#6b7280',
         badgeBg: '#e5e7eb',
         badgeText: '#6b7280',
-        badge: '✓',
-        isDisabled: true
-      };
+        badge: 'Past',
+        isDisabled: false,
+      }
     }
-    
+
     if (slot.isBooked) {
-      // Booked - Orange
       return {
         background: 'linear-gradient(135deg, #fed7aa, #fdba74)',
         borderColor: '#f97316',
         textColor: '#1a2a3a',
         badgeBg: '#fed7aa',
         badgeText: '#b45309',
-        badge: '📅',
-        isDisabled: false
-      };
+        badge: 'Booked',
+        isDisabled: false,
+      }
     }
-    
+
     if (slot.isAvailable) {
-      // Available - Green
       return {
         background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)',
         borderColor: '#16a34a',
         textColor: '#1a2a3a',
         badgeBg: '#dcfce7',
         badgeText: '#166534',
-        badge: '✓',
-        isDisabled: false
-      };
+        badge: 'Open',
+        isDisabled: false,
+      }
     }
-    
-    // Unavailable - White
+
     return {
       background: '#ffffff',
       borderColor: '#e5e7eb',
       textColor: '#1a2a3a',
       badgeBg: '#f3f4f6',
       badgeText: '#6b7280',
-      badge: '○',
-      isDisabled: false
-    };
-  };
+      badge: 'Off',
+      isDisabled: false,
+    }
+  }
 
-  const availableCount = slots.filter(s => s.isAvailable).length;
-  const changedCount = Object.keys(localChanges).length;
-
-  // Group slots by period
-  const morningSlots = slots.filter(s => s.slotNumber <= 8);
-  const afternoonSlots = slots.filter(s => s.slotNumber >= 11);
+  const availableCount = slots.filter((s) => s.isAvailable).length
+  const changedCount = Object.keys(localChanges).length
+  const morningSlots = slots.filter((s) => s.slotNumber <= 8)
+  const afternoonSlots = slots.filter((s) => s.slotNumber >= 11)
+  const hasAvailableSlots = slots.some((s) => s.isAvailable)
 
   if (loading) {
     return (
-      <div className="flex flex-col justify-center items-center py-16 gap-4">
-        <div className="relative w-16 h-16">
-          <div className="absolute inset-0 rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5] animate-spin" />
-          <div className="absolute inset-2 rounded-full border-4 border-transparent border-r-[#3a7bd5] animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1s' }} />
+      <div className="flex flex-col items-center justify-center gap-4 py-16">
+        <div className="relative h-16 w-16">
+          <div className="absolute inset-0 animate-spin rounded-full border-4 border-[#e6ecf5] border-t-[#3a7bd5]" />
         </div>
         <div className="text-center">
           <p className="text-sm font-semibold text-[#1a2a3a]">Loading your schedule...</p>
-          <p className="text-xs text-[#8a9ab0] mt-1">Please wait a moment</p>
+          <p className="mt-1 text-xs text-[#8a9ab0]">Please wait a moment</p>
         </div>
       </div>
-    );
+    )
   }
 
   if (!slots || slots.length === 0) {
     return (
       <div className="w-full space-y-4">
-        <div className="px-6 py-5 rounded-2xl border-2 bg-gradient-to-r from-[#fee2e2] to-[#fca5a5]" style={{ borderColor: '#dc2626' }}>
+        <div className="rounded-2xl border-2 bg-gradient-to-r from-[#fee2e2] to-[#fca5a5] px-6 py-5" style={{ borderColor: '#dc2626' }}>
           <div className="flex items-start gap-4">
-            <span className="text-3xl flex-shrink-0">⚠️</span>
             <div className="flex-1">
               <h4 className="text-sm font-bold text-[#991b1b]">Unable to Load Schedule</h4>
-              <p className="text-xs text-[#b91c1c] mt-1.5">The schedule data could not be loaded. This might be a temporary issue.</p>
+              <p className="mt-1.5 text-xs text-[#b91c1c]">The schedule data could not be loaded. This might be a temporary issue.</p>
               <button
                 onClick={loadSlots}
-                className="mt-3 px-4 py-2 text-xs font-bold rounded-lg transition-all transform hover:scale-105 active:scale-95"
-                style={{ background: '#dc2626', color: 'white' }}>
-                🔄 Try Again
+                className="mt-3 rounded-lg bg-[#dc2626] px-4 py-2 text-xs font-bold text-white transition-all transform hover:scale-105 active:scale-95"
+              >
+                Try Again
               </button>
             </div>
           </div>
         </div>
       </div>
-    );
+    )
   }
-
-  // Check if any slots are available now or after pending changes
-  const hasAvailableSlots = slots.some(s => s.isAvailable);
-  const isSetupRequired = !hasAvailableSlots && !hasSetupBefore;
 
   return (
     <div className="w-full space-y-6">
-      {/* FALLBACK MODE WARNING BANNER */}
       {isUsingFallback && (
-        <div className="px-6 py-5 rounded-2xl border-2" style={{ background: '#fef3c7', borderColor: '#fcd34d' }}>
+        <div className="rounded-2xl border-2 bg-[#fef3c7] px-6 py-5" style={{ borderColor: '#fcd34d' }}>
           <div className="flex items-start gap-4">
-            <span className="text-3xl flex-shrink-0">⚠️</span>
             <div className="flex-1">
               <h4 className="text-sm font-bold text-[#92400e]">Temporary Connection Mode</h4>
-              <p className="text-xs text-[#a16207] mt-1.5">
-                There's a temporary issue connecting to the server. Using default schedule view. Your changes will be saved when you click "Save Changes".
+              <p className="mt-1.5 text-xs text-[#a16207]">
+                There is a temporary issue connecting to the server. Using the default schedule view.
               </p>
               <button
                 onClick={loadSlots}
-                className="mt-3 px-4 py-2 text-xs font-bold rounded-lg transition-all transform hover:scale-105 active:scale-95"
-                style={{ background: '#f59e0b', color: 'white' }}>
-                🔄 Retry Connection
+                className="mt-3 rounded-lg bg-[#f59e0b] px-4 py-2 text-xs font-bold text-white transition-all transform hover:scale-105 active:scale-95"
+              >
+                Retry Connection
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SETUP REQUIRED BANNER */}
-      {isSetupRequired && (
-        <div className="px-6 py-5 rounded-2xl border-2" style={{ background: '#fef3c7', borderColor: '#fcd34d' }}>
-          <div className="flex items-start gap-4">
-            <span className="text-3xl flex-shrink-0">⚡</span>
-            <div className="flex-1">
-              <h4 className="text-sm font-bold text-[#92400e]">First Time Setup Required!</h4>
-              <p className="text-xs text-[#a16207] mt-1.5">
-                Select your available time slots below to start accepting patient appointments. All slots are unavailable by default.
-              </p>
-              <button
-                onClick={handleSelectAll}
-                className="mt-3 px-4 py-2 text-xs font-bold rounded-lg transition-all transform hover:scale-105 active:scale-95"
-                style={{ background: '#f59e0b', color: 'white' }}>
-                🚀 Quick Setup: Make All Available
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUCCESS BANNER - Setup Complete */}
-      {hasAvailableSlots && hasSetupBefore && Object.keys(localChanges).length === 0 && (
-        <div className="px-6 py-4 rounded-2xl border-2 bg-gradient-to-r from-[#ecfdf5] to-[#d1fae5]" style={{ borderColor: '#10b981' }}>
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">✅</span>
-            <div>
-              <p className="text-sm font-bold text-[#065f46]">
-                Schedule is ready! 
-              </p>
-              <p className="text-xs text-[#047857] mt-0.5">
-                You have {availableCount} available slot{availableCount !== 1 ? 's' : ''} on this date. Patients can now book appointments during these times.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Header with stats */}
-      <div className="bg-gradient-to-r from-[#3a7bd5] to-[#2d5a8e] rounded-2xl p-6 text-white shadow-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <span className="text-2xl">📆</span> 
-              Schedule for {new Date(selectedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
-            </h3>
-            <p className="text-sm mt-2 opacity-90">
-              You have <span className="font-bold text-lg">{availableCount}</span> available slot{availableCount !== 1 ? 's' : ''} out of 24 total
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-4xl font-bold">{availableCount}</div>
-            <div className="text-sm opacity-90 mt-1">Slots Open</div>
-          </div>
-        </div>
-      </div>
-
-      {/* All Slots - Grid View */}
       <div className="bg-gradient-to-br from-[#f8f9fc] to-[#f0f4f9] rounded-2xl border border-[#e6ecf5] p-6">
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-base font-bold text-[#1a2a3a] flex items-center gap-2">
-              <span className="text-xl">📅</span> Schedule Overview
+              <span className="text-xl">Schedule Overview</span>
             </h3>
             <div className="flex gap-2">
               <button
-                onClick={() => handleSelectAll()}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all transform hover:scale-105"
-                style={{ background: '#e6f9f2', color: '#1a9e6a', border: '1px solid #1a9e6a' }}>
-                ✓ Select All
+                onClick={handleSelectAll}
+                className="rounded-lg border border-[#1a9e6a] bg-[#e6f9f2] px-3 py-1.5 text-xs font-semibold text-[#1a9e6a] transition-all transform hover:scale-105"
+              >
+                Select All
               </button>
               <button
-                onClick={() => handleDeselectAll()}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all transform hover:scale-105"
-                style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #dc2626' }}>
-                ✕ Deselect All
+                onClick={handleDeselectAll}
+                className="rounded-lg border border-[#dc2626] bg-[#fee2e2] px-3 py-1.5 text-xs font-semibold text-[#dc2626] transition-all transform hover:scale-105"
+              >
+                Deselect All
               </button>
             </div>
           </div>
-          <p className="text-xs text-[#8a9ab0]">Click on any slot to toggle availability. <span className="font-bold">Green</span> = Available, <span className="font-bold">Orange</span> = Booked, <span className="font-bold">Grey</span> = Completed/Expired</p>
+          <p className="text-xs text-[#8a9ab0]">
+            Click on any slot to toggle availability. Green = Available, Orange = Booked, Grey = Completed/Past
+          </p>
         </div>
 
-        {/* Morning Slots */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-[#e6ecf5]">
-            <div>
-              <h4 className="text-sm font-bold text-[#1a2a3a] flex items-center gap-2">
-                <span className="text-lg">🌅</span> Morning (8:00 AM - 12:00 PM)
-              </h4>
-              <p className="text-xs text-[#8a9ab0] mt-1">{morningSlots.filter(s => s.isAvailable).length} / {morningSlots.length} slots available</p>
-            </div>
+          <div className="mb-4 border-b-2 border-[#e6ecf5] pb-3">
+            <h4 className="text-sm font-bold text-[#1a2a3a]">Morning (8:00 AM - 12:00 PM)</h4>
+            <p className="mt-1 text-xs text-[#8a9ab0]">{morningSlots.filter((s) => s.isAvailable).length} / {morningSlots.length} slots available</p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {morningSlots.map(slot => {
-              const slotStyle = getSlotStyle(slot);
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {morningSlots.map((slot) => {
+              const slotStyle = getSlotStyle(slot)
               return (
                 <button
                   key={slot.slotNumber}
                   onClick={() => !slotStyle.isDisabled && handleToggleSlot(slot.slotNumber)}
                   disabled={slotStyle.isDisabled}
-                  className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  className="relative rounded-xl border-2 p-4 transition-all duration-300 transform hover:scale-105 disabled:cursor-not-allowed disabled:hover:scale-100"
                   style={{
                     background: slotStyle.background,
                     borderColor: slotStyle.borderColor,
-                    boxShadow: slotStyle.isDisabled ? 'none' : `0 4px 12px rgba(22, 163, 74, 0.15)`
-                  }}>
+                  }}
+                >
                   <div className="text-center">
-                    <div className="text-lg font-bold" style={{ color: slotStyle.textColor }}>{slot.slotNumber}</div>
-                    <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
-                    <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block`}
-                      style={{ background: slotStyle.badgeBg, color: slotStyle.badgeText }}>
+                    <div className="text-lg font-bold" style={{ color: slotStyle.textColor }}>
+                      {slot.slotNumber}
+                    </div>
+                    <div className="mt-2 text-xs font-semibold text-[#3a7bd5]">{slot.displayTime}</div>
+                    <div className="mt-3 inline-block rounded-full px-2 py-1 text-xs font-bold" style={{ background: slotStyle.badgeBg, color: slotStyle.badgeText }}>
                       {slotStyle.badge}
                     </div>
-                    {slotStyle.isDisabled && <div className="text-xs text-[#6b7280] mt-2 font-semibold">Completed</div>}
                   </div>
                 </button>
-              );
+              )
             })}
           </div>
         </div>
 
-        {/* Lunch Break Info */}
-        <div className="px-5 py-4 rounded-xl mb-8 flex items-start gap-3" style={{ background: '#fef3c7', border: '2px solid #fcd34d' }}>
-          <span className="text-2xl flex-shrink-0">🍽️</span>
-          <div>
-            <p className="text-sm font-bold text-[#92400e]">Lunch Break</p>
-            <p className="text-xs text-[#a16207] mt-0.5">12:00 PM - 1:00 PM (Slots 9-10 are always unavailable)</p>
-          </div>
+        <div className="mb-8 rounded-xl border-2 border-[#fcd34d] bg-[#fef3c7] px-5 py-4">
+          <p className="text-sm font-bold text-[#92400e]">Lunch Break</p>
+          <p className="mt-0.5 text-xs text-[#a16207]">12:00 PM - 1:00 PM (Slots 9-10 are always unavailable)</p>
         </div>
 
-        {/* Afternoon Slots */}
         <div>
-          <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-[#e6ecf5]">
-            <div>
-              <h4 className="text-sm font-bold text-[#1a2a3a] flex items-center gap-2">
-                <span className="text-lg">🌤️</span> Afternoon & Evening (1:00 PM - 9:00 PM)
-              </h4>
-              <p className="text-xs text-[#8a9ab0] mt-1">{afternoonSlots.filter(s => s.isAvailable).length} / {afternoonSlots.length} slots available</p>
-            </div>
+          <div className="mb-4 border-b-2 border-[#e6ecf5] pb-3">
+            <h4 className="text-sm font-bold text-[#1a2a3a]">Afternoon & Evening (1:00 PM - 9:00 PM)</h4>
+            <p className="mt-1 text-xs text-[#8a9ab0]">{afternoonSlots.filter((s) => s.isAvailable).length} / {afternoonSlots.length} slots available</p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {afternoonSlots.map(slot => {
-              const slotStyle = getSlotStyle(slot);
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {afternoonSlots.map((slot) => {
+              const slotStyle = getSlotStyle(slot)
               return (
                 <button
                   key={slot.slotNumber}
                   onClick={() => !slotStyle.isDisabled && handleToggleSlot(slot.slotNumber)}
                   disabled={slotStyle.isDisabled}
-                  className="relative group p-4 rounded-xl transition-all duration-300 transform hover:scale-105 border-2 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  className="relative rounded-xl border-2 p-4 transition-all duration-300 transform hover:scale-105 disabled:cursor-not-allowed disabled:hover:scale-100"
                   style={{
                     background: slotStyle.background,
                     borderColor: slotStyle.borderColor,
-                    boxShadow: slotStyle.isDisabled ? 'none' : `0 4px 12px rgba(22, 163, 74, 0.15)`
-                  }}>
+                  }}
+                >
                   <div className="text-center">
-                    <div className="text-lg font-bold" style={{ color: slotStyle.textColor }}>{slot.slotNumber}</div>
-                    <div className="text-xs font-semibold text-[#3a7bd5] mt-2">{slot.displayTime}</div>
-                    <div className={`text-xs font-bold mt-3 px-2 py-1 rounded-full inline-block`}
-                      style={{ background: slotStyle.badgeBg, color: slotStyle.badgeText }}>
+                    <div className="text-lg font-bold" style={{ color: slotStyle.textColor }}>
+                      {slot.slotNumber}
+                    </div>
+                    <div className="mt-2 text-xs font-semibold text-[#3a7bd5]">{slot.displayTime}</div>
+                    <div className="mt-3 inline-block rounded-full px-2 py-1 text-xs font-bold" style={{ background: slotStyle.badgeBg, color: slotStyle.badgeText }}>
                       {slotStyle.badge}
                     </div>
-                    {slotStyle.isDisabled && <div className="text-xs text-[#6b7280] mt-2 font-semibold">Completed</div>}
                   </div>
                 </button>
-              );
+              )
             })}
           </div>
         </div>
       </div>
 
-      {/* Save Button Section */}
       {changedCount > 0 ? (
-        <div className="bg-gradient-to-r from-[#ecfdf5] to-[#d1fae5] rounded-2xl p-6 border-2 border-[#10b981] shadow-lg">
+        <div className="rounded-2xl border-2 border-[#10b981] bg-gradient-to-r from-[#ecfdf5] to-[#d1fae5] p-6 shadow-lg">
           <div className="flex items-center justify-between gap-4">
             <div className="flex-1">
-              <p className="text-sm font-bold text-[#065f46] flex items-center gap-2">
-                <span className="text-xl">✨</span> You have {changedCount} unsaved change{changedCount > 1 ? 's' : ''}
+              <p className="flex items-center gap-2 text-sm font-bold text-[#065f46]">
+                You have {changedCount} unsaved change{changedCount > 1 ? 's' : ''}
               </p>
-              <p className="text-xs text-[#047857] mt-1">
-                {!slots.some(s => s.isAvailable) 
-                  ? '⚠️ Select at least one slot to save' 
-                  : `Ready to save ${slots.filter(s => s.isAvailable).length} available slot${slots.filter(s => s.isAvailable).length !== 1 ? 's' : ''}`}
+              <p className="mt-1 text-xs text-[#047857]">
+                {!hasAvailableSlots
+                  ? 'Select at least one slot to save'
+                  : `Ready to save ${availableCount} available slot${availableCount !== 1 ? 's' : ''}`}
               </p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={handleSaveChanges}
-                disabled={saving || !slots.some(s => s.isAvailable)}
-                className="px-6 py-3 rounded-xl text-sm font-bold text-white transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg"
-                style={{ 
-                  background: slots.some(s => s.isAvailable) 
-                    ? 'linear-gradient(135deg, #10b981, #059669)' 
-                    : '#9ca3af',
-                  boxShadow: slots.some(s => s.isAvailable) ? '0 4px 14px rgba(16, 185, 129, 0.4)' : 'none'
-                }}>
-                {saving ? '💾 Saving...' : `✓ Save Changes (${changedCount})`}
+                disabled={saving || !hasAvailableSlots}
+                className="rounded-xl px-6 py-3 text-sm font-bold text-white transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:transform-none"
+                style={{
+                  background: hasAvailableSlots ? 'linear-gradient(135deg, #10b981, #059669)' : '#9ca3af',
+                }}
+              >
+                {saving ? 'Saving...' : `Save Changes (${changedCount})`}
               </button>
               <button
                 onClick={loadSlots}
                 disabled={saving}
-                className="px-5 py-3 rounded-xl text-sm font-semibold text-[#4b5563] bg-white border-2 border-[#e5e7eb] hover:bg-[#f3f4f6] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                ✕ Cancel
+                className="rounded-xl border-2 border-[#e5e7eb] bg-white px-5 py-3 text-sm font-semibold text-[#4b5563] transition-all disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
               </button>
             </div>
           </div>
         </div>
       ) : (
-        <div className="bg-gradient-to-r from-[#f0f9ff] to-[#e0f2fe] rounded-2xl p-6 border-2 border-[#0ea5e9] text-center">
-          <p className="text-sm font-semibold text-[#0369a1]">✅ Your schedule is all set!</p>
-          <p className="text-xs text-[#0c4a6e] mt-1">Make changes to update your availability</p>
+        <div className="rounded-2xl border-2 border-[#0ea5e9] bg-gradient-to-r from-[#f0f9ff] to-[#e0f2fe] p-6 text-center">
+          <p className="text-sm font-semibold text-[#0369a1]">Your schedule is all set!</p>
+          <p className="mt-1 text-xs text-[#0c4a6e]">Make changes to update your availability</p>
         </div>
       )}
-
-      {/* Info/Guidance section */}
-      <div className="bg-gradient-to-r from-[#dbeafe] to-[#dbeafe] rounded-2xl p-6 border-2 border-[#3b82f6]">
-        <div className="space-y-3">
-          <p className="text-sm font-bold text-[#1e40af] flex items-center gap-2">
-            <span className="text-lg">📖</span> Slot Status Guide
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">🟢</span>
-              <div>
-                <p className="text-xs font-semibold text-[#16a34a]">Available</p>
-                <p className="text-xs text-[#047857] mt-0.5">Click to set slots where you can accept patients</p>
-              </div>
-            </div>
-            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">🟠</span>
-              <div>
-                <p className="text-xs font-semibold text-[#b45309]">Booked</p>
-                <p className="text-xs text-[#92400e] mt-0.5">Patient has already scheduled an appointment</p>
-              </div>
-            </div>
-            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">⚫</span>
-              <div>
-                <p className="text-xs font-semibold text-[#6b7280]">Completed/Expired</p>
-                <p className="text-xs text-[#4b5563] mt-0.5">Time has passed - slot is no longer available</p>
-              </div>
-            </div>
-            <div className="flex gap-3 bg-white rounded-lg p-3 border border-[#bfdbfe]">
-              <span className="text-2xl flex-shrink-0">⚪</span>
-              <div>
-                <p className="text-xs font-semibold text-[#6b7280]">Unavailable</p>
-                <p className="text-xs text-[#4b5563] mt-0.5">You haven't set this slot as available yet</p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 p-3 rounded-lg bg-white border border-[#bfdbfe]">
-            <p className="text-xs text-[#1e40af] font-semibold">💡 Pro Tip:</p>
-            <p className="text-xs text-[#3730a3] mt-1">Use "Select All" to make all slots available, then unselect the ones you'd prefer to skip. Expired slots cannot be clicked.</p>
-          </div>
-        </div>
-      </div>
     </div>
-  );
-};
+  )
+}
 
-export default ScheduleManager;
+export default ScheduleManager

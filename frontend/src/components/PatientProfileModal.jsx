@@ -80,15 +80,6 @@ const PatientProfileModal = ({ patientId, onClose }) => {
     }
   }
 
-  const handleDownload = async (fileId, fileName) => {
-    try {
-      await profileService.downloadFile(fileId, fileName)
-      showToast('Downloading medical report', 'success')
-    } catch (error) {
-      showToast(error.response?.data?.error || error.message || 'Unable to download file', 'error')
-    }
-  }
-
   const patient = summary?.patient
   const appointmentHistory = summary?.appointmentHistory || []
   const documents = summary?.documents || []
@@ -231,7 +222,6 @@ const PatientProfileModal = ({ patientId, onClose }) => {
                 ) : (
                   <div className="space-y-3">
                     {documents.map((document) => {
-                      const canDownload = document.accessStatus === 'approved'
                       const isPending = document.accessStatus === 'pending'
 
                       return (
@@ -247,15 +237,7 @@ const PatientProfileModal = ({ patientId, onClose }) => {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
-                            {canDownload ? (
-                              <button
-                                onClick={() => handleDownload(document.id, document.fileName)}
-                                className="rounded-xl px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:-translate-y-px"
-                                style={{ background: 'linear-gradient(135deg, #3a7bd5, #2d5a8e)' }}
-                              >
-                                Download
-                              </button>
-                            ) : (
+                            {!document.accessStatus || document.accessStatus !== 'approved' ? (
                               <button
                                 onClick={() => handleRequestAccess(document.id)}
                                 disabled={isPending || requestingFileId === document.id}
@@ -272,7 +254,7 @@ const PatientProfileModal = ({ patientId, onClose }) => {
                                   ? 'Request Pending'
                                   : 'Request Access'}
                               </button>
-                            )}
+                            ) : null}
 
                             <span
                               className="rounded-full px-3 py-1 text-xs font-medium capitalize"
