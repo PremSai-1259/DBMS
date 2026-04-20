@@ -187,6 +187,12 @@ const PatientDashboard = () => {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/notifications')}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg text-[#4a5a6a] hover:text-[#3a7bd5] hover:bg-[#e8f0fb] transition-all"
+          >
+            Notifications
+          </button>
           <span className="text-sm text-[#4a5a6a]">Hi, {displayName.split(' ')[0]}</span>
           <button onClick={handleLogout}
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-[#4a5a6a] hover:text-[#3a7bd5] hover:bg-[#e8f0fb] transition-all">

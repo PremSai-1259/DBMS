@@ -10,6 +10,7 @@ import DoctorProfileSetup from './pages/DoctorProfileSetup'
 import PatientDashboard from './pages/PatientDashboard'
 import DoctorDashboard from './pages/DoctorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import NotificationsPortal from './pages/NotificationsPortal'
 
 export default function App() {
   return (
@@ -43,6 +44,11 @@ export default function App() {
           <Route path="/admin"  element={
             <ProtectedRoute role="admin">
               <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/notifications" element={
+            <ProtectedRoute>
+              <NotificationsPortal />
             </ProtectedRoute>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />

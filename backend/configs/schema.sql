@@ -102,47 +102,6 @@ CREATE TABLE doctor_approvals (
 );
 
 -- ==============================
--- DOCTOR SCHEDULES (24 SLOTS PER DAY)
--- ==============================
--- Stores doctor's availability for specific dates
--- 24 slots: 8:00 AM - 9:00 PM (30 min each), break 12:00 PM - 1:00 PM (slots 9-10 skipped)
--- Slot mapping: 1-8 (8am-12pm), 11-24 (1pm-9pm)
-CREATE TABLE doctor_schedules (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    doctor_id INT NOT NULL,
-    schedule_date DATE NOT NULL,
-
-    slot_1 BOOLEAN DEFAULT FALSE,
-    slot_2 BOOLEAN DEFAULT FALSE,
-    slot_3 BOOLEAN DEFAULT FALSE,
-    slot_4 BOOLEAN DEFAULT FALSE,
-    slot_5 BOOLEAN DEFAULT FALSE,
-    slot_6 BOOLEAN DEFAULT FALSE,
-    slot_7 BOOLEAN DEFAULT FALSE,
-    slot_8 BOOLEAN DEFAULT FALSE,
-    slot_11 BOOLEAN DEFAULT FALSE,
-    slot_12 BOOLEAN DEFAULT FALSE,
-    slot_13 BOOLEAN DEFAULT FALSE,
-    slot_14 BOOLEAN DEFAULT FALSE,
-    slot_15 BOOLEAN DEFAULT FALSE,
-    slot_16 BOOLEAN DEFAULT FALSE,
-    slot_17 BOOLEAN DEFAULT FALSE,
-    slot_18 BOOLEAN DEFAULT FALSE,
-    slot_19 BOOLEAN DEFAULT FALSE,
-    slot_20 BOOLEAN DEFAULT FALSE,
-    slot_21 BOOLEAN DEFAULT FALSE,
-    slot_22 BOOLEAN DEFAULT FALSE,
-    slot_23 BOOLEAN DEFAULT FALSE,
-    slot_24 BOOLEAN DEFAULT FALSE,
-
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-    UNIQUE (doctor_id, schedule_date),
-    FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_doctor_date (doctor_id, schedule_date)
-);
-
--- ==============================
 -- APPOINTMENT SLOTS (1–24)
 -- ==============================
 CREATE TABLE appointment_slots (
@@ -227,16 +186,3 @@ CREATE TABLE record_access (
     FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
 );
 
--- ==============================
--- NOTIFICATIONS
--- ==============================
-CREATE TABLE notifications (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    type VARCHAR(50),
-    message TEXT,
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);

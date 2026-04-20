@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Toast from '../components/Toast'
 import Navigation from '../components/Navigation'
 import useToast from '../hooks/useToast'
@@ -32,6 +33,7 @@ const approvalTabs = [
 ]
 
 const AdminDashboard = () => {
+  const navigate = useNavigate()
   const { toast, showToast } = useToast()
   const [activeStatus, setActiveStatus] = useState('pending')
   const [approvalRecords, setApprovalRecords] = useState([])
@@ -219,6 +221,17 @@ const AdminDashboard = () => {
         </div>
 
         <div className="mb-8 flex justify-end">
+          <button
+            onClick={() => navigate('/notifications')}
+            className="mr-3 rounded-xl border px-4 py-2 font-medium transition-all duration-200"
+            style={{
+              background: '#ffffff',
+              color: '#4a5a6a',
+              borderColor: '#d5deea',
+            }}
+          >
+            Notifications
+          </button>
           <button
             onClick={() => fetchApprovals(activeStatus)}
             disabled={loading}

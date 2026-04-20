@@ -467,6 +467,12 @@ const DoctorDashboard = () => {
           <span className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#e6f9f2', color: '#1a9e6a' }}>
             ✓ Approved
           </span>
+          <button
+            onClick={() => navigate('/notifications')}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg text-[#4a5a6a] hover:text-[#3a7bd5] hover:bg-[#e8f0fb] transition-all"
+          >
+            Notifications
+          </button>
           <span className="text-sm text-[#4a5a6a]">Dr. {doctorName}</span>
           <button onClick={handleLogout}
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-[#4a5a6a] hover:text-[#3a7bd5] hover:bg-[#e8f0fb] transition-all">
