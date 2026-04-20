@@ -5,6 +5,29 @@ const NotificationModel = require('../models/Notification');
 const { sendEmail, emailTemplates } = require('../utils/helpers');
 
 class DoctorApprovalController {
+  static formatAdminApproval(approval) {
+    return {
+      approvalId: approval.approvalId,
+      doctorId: approval.doctorId,
+      status: approval.status,
+      submittedAt: approval.submittedAt,
+      reviewedAt: approval.reviewedAt,
+      certificateFileId: approval.certificateFileId,
+      certificateFileName: approval.fileName ? approval.fileName.split('/').pop() : 'certificate',
+      adminMessage: approval.adminMessage || null,
+      doctor: {
+        id: approval.doctorId,
+        name: approval.doctorName || 'Unknown',
+        email: approval.doctorEmail || 'Unknown',
+        specialization: approval.specialization || 'N/A',
+        experience: approval.experience || 0,
+        hospitalName: approval.hospitalName || 'N/A',
+        address: approval.address || 'N/A',
+        isVerified: approval.isVerified
+      }
+    };
+  }
+
   // Get doctor's current approval status
   static async getMyApprovalStatus(req, res) {
     try {
@@ -215,62 +238,60 @@ class DoctorApprovalController {
   // Admin gets all pending doctor approvals
   static async getPendingDoctors(req, res) {
     try {
-      console.log('[getPendingDoctors] ⚡ Fetching pending doctor approvals...');
-      
-      // Admin only - checked by roleMiddleware
-      let pending;
-      try {
-        pending = await DoctorApprovalModel.findPendingApprovals();
-        console.log('[getPendingDoctors] ✅ Found', pending.length, 'pending approvals');
-      } catch (queryErr) {
-        console.error('[getPendingDoctors] ❌ Query failed:', queryErr.message);
-        console.error('[getPendingDoctors] SQL Error:', queryErr.code);
-        throw new Error(`Failed to fetch pending approvals: ${queryErr.message}`);
-      }
-
-      // Transform the response with defensive null handling
-      const enrichedPending = pending.map((approval) => {
-        try {
-          return {
-            approvalId: approval.approvalId,
-            doctorId: approval.doctorId,
-            status: approval.status,
-            submittedAt: approval.submittedAt,
-            reviewedAt: approval.reviewedAt,
-            certificateFileId: approval.certificateFileId,
-            certificateFileName: approval.fileName ? approval.fileName.split('/').pop() : 'certificate',
-            doctor: {
-              id: approval.doctorId,
-              name: approval.doctorName || 'Unknown',
-              email: approval.doctorEmail || 'Unknown',
-              specialization: approval.specialization || 'N/A',
-              experience: approval.experience || 0,
-              hospitalName: approval.hospitalName || 'N/A',
-              address: approval.address || 'N/A',
-              isVerified: approval.isVerified
-            }
-          };
-        } catch (mapErr) {
-          console.error('[getPendingDoctors] Error transforming approval:', mapErr);
-          throw mapErr;
-        }
-      });
-
+      const pending = await DoctorApprovalModel.findPendingApprovals();
       const summary = await DoctorApprovalModel.getStatusCounts();
+      const approvals = pending.map((approval) => DoctorApprovalController.formatAdminApproval(approval));
 
-      console.log('[getPendingDoctors] ✅ Returning', enrichedPending.length, 'enriched records');
       res.json({
-        pending: enrichedPending,
-        count: enrichedPending.length,
+        approvals,
+        pending: approvals,
+        count: approvals.length,
+        status: 'pending',
         summary,
         timestamp: new Date().toISOString()
       });
     } catch (error) {
       console.error('[getPendingDoctors] ❌ UNHANDLED ERROR:', error.message);
-      console.error('[getPendingDoctors] Stack:', error.stack);
       res.status(500).json({ 
         error: 'Failed to fetch pending doctor approvals',
         code: 'GET_PENDING_FAILED',
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  }
+
+  // Admin gets approvals by status for dashboard tabs
+  static async getApprovalsByStatus(req, res) {
+    try {
+      const allowedStatuses = ['pending', 'approved', 'rejected'];
+      const requestedStatus = (req.query.status || req.params.status || 'pending').toLowerCase();
+
+      if (!allowedStatuses.includes(requestedStatus)) {
+        return res.status(400).json({
+          error: 'Invalid approval status',
+          allowedStatuses
+        });
+      }
+
+      const approvals = requestedStatus === 'pending'
+        ? await DoctorApprovalModel.findPendingApprovals()
+        : await DoctorApprovalModel.findApprovalsByStatus(requestedStatus);
+
+      const summary = await DoctorApprovalModel.getStatusCounts();
+
+      res.json({
+        approvals: approvals.map((approval) => DoctorApprovalController.formatAdminApproval(approval)),
+        count: approvals.length,
+        status: requestedStatus,
+        summary,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[getApprovalsByStatus] ❌ UNHANDLED ERROR:', error.message);
+      res.status(500).json({
+        error: 'Failed to fetch approval records',
+        code: 'GET_APPROVALS_BY_STATUS_FAILED',
         message: error.message,
         details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
@@ -301,10 +322,10 @@ class DoctorApprovalController {
     try {
       const { doctorId } = req.params;
       
-      // Get latest pending approval
+      // Get latest approval record, regardless of status
       const approval = await DoctorApprovalModel.findLatestByDoctorId(doctorId);
-      if (!approval || approval.status !== 'pending') {
-        return res.status(404).json({ error: 'No pending approval found for this doctor' });
+      if (!approval) {
+        return res.status(404).json({ error: 'No approval found for this doctor' });
       }
 
       // Get full approval details with joined data

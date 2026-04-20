@@ -38,6 +38,10 @@ export const profileService = {
   getPendingDoctorApprovals: () =>
     api.get('/doctor-approvals/pending'),
 
+  // Admin: Get doctor approvals by status
+  getDoctorApprovalsByStatus: (status) =>
+    api.get('/doctor-approvals/list', { params: { status } }),
+
   // Admin: Get dashboard summary counts
   getDoctorApprovalSummary: () =>
     api.get('/doctor-approvals/summary'),

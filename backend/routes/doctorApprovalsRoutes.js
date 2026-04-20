@@ -25,6 +25,10 @@ router.post('/request', authMiddleware, roleMiddleware(['doctor']),
 router.get('/pending', authMiddleware, roleMiddleware(['admin']), 
   DoctorApprovalController.getPendingDoctors);
 
+// GET /doctor-approvals/list?status=pending|approved|rejected - Admin gets approvals by status
+router.get('/list', authMiddleware, roleMiddleware(['admin']),
+  DoctorApprovalController.getApprovalsByStatus);
+
 // GET /doctor-approvals/summary - Admin gets dashboard counts
 router.get('/summary', authMiddleware, roleMiddleware(['admin']),
   DoctorApprovalController.getApprovalSummary);

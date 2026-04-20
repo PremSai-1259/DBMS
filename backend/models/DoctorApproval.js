@@ -24,6 +24,37 @@ const db = require('../configs/db');
  */
 
 class DoctorApprovalModel {
+  static buildAdminApprovalQuery(whereClause = '') {
+    return `
+      SELECT 
+        da.id as approvalId,
+        da.doctor_id as doctorId,
+        da.certificate_file_id as certificateFileId,
+        da.status,
+        da.admin_message as adminMessage,
+        da.submitted_at as submittedAt,
+        da.reviewed_at as reviewedAt,
+        u.id as userId,
+        u.name as doctorName,
+        u.email as doctorEmail,
+        f.id as fileId,
+        f.file_path as filePath,
+        f.file_name as fileName,
+        dp.id as profileId,
+        dp.specialization,
+        dp.experience,
+        dp.hospital_name as hospitalName,
+        dp.address,
+        dp.is_verified as isVerified
+      FROM doctor_approvals da
+      INNER JOIN users u ON da.doctor_id = u.id
+      LEFT JOIN files f ON da.certificate_file_id = f.id
+      LEFT JOIN doctor_profiles dp ON da.doctor_id = dp.user_id
+      ${whereClause}
+      ORDER BY da.submitted_at DESC, da.id DESC
+    `;
+  }
+
   // Create new approval request (allows resubmission after rejection)
   static async create(doctorId, certificateFileId) {
     try {
@@ -81,37 +112,17 @@ class DoctorApprovalModel {
 
   // Find pending approvals for admin review
   static async findPendingApprovals() {
-    // Use a simpler query structure to avoid ambiguity
-    const query = `
-      SELECT 
-        da.id as approvalId,
-        da.doctor_id as doctorId,
-        da.certificate_file_id as certificateFileId,
-        da.status,
-        da.admin_message as adminMessage,
-        da.submitted_at as submittedAt,
-        da.reviewed_at as reviewedAt,
-        u.id as userId,
-        u.name as doctorName,
-        u.email as doctorEmail,
-        f.id as fileId,
-        f.file_path as filePath,
-        f.file_name as fileName,
-        dp.id as profileId,
-        dp.specialization,
-        dp.experience,
-        dp.hospital_name as hospitalName,
-        dp.address,
-        dp.is_verified as isVerified
-      FROM doctor_approvals da
-      INNER JOIN users u ON da.doctor_id = u.id
-      LEFT JOIN files f ON da.certificate_file_id = f.id
-      LEFT JOIN doctor_profiles dp ON da.doctor_id = dp.user_id
-      WHERE da.status = 'pending'
-    `;
+    const query = this.buildAdminApprovalQuery("WHERE da.status = 'pending'");
     console.log('[DoctorApprovalModel] Executing findPendingApprovals query');
     const [rows] = await db.execute(query);
     console.log('[DoctorApprovalModel] Query successful, rows:', rows.length);
+    return rows;
+  }
+
+  // Find approvals for admin review by status
+  static async findApprovalsByStatus(status) {
+    const query = this.buildAdminApprovalQuery('WHERE da.status = ?');
+    const [rows] = await db.execute(query, [status]);
     return rows;
   }
 

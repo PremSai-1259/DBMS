@@ -310,7 +310,7 @@ const PatientDashboard = () => {
                   <p className="text-sm mt-1">Try a different search term</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {doctors.map(doctor => (
                     <DoctorCard
                       key={doctor.doctorId}

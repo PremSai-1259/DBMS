@@ -10,9 +10,31 @@ const badgeStyles = {
   rejected: { bg: '#f8fafc', text: '#64748b', border: '#dbe3ef', label: 'Rejected' },
 }
 
+const approvalTabs = [
+  {
+    status: 'pending',
+    label: 'Pending Reviews',
+    emptyTitle: 'No Pending Requests',
+    emptyMessage: 'All doctor profiles have been reviewed.',
+  },
+  {
+    status: 'approved',
+    label: 'Approved Doctors',
+    emptyTitle: 'No Approved Doctors',
+    emptyMessage: 'No doctor approvals have been marked as approved yet.',
+  },
+  {
+    status: 'rejected',
+    label: 'Rejected Requests',
+    emptyTitle: 'No Rejected Requests',
+    emptyMessage: 'No approvals have been rejected so far.',
+  },
+]
+
 const AdminDashboard = () => {
   const { toast, showToast } = useToast()
-  const [pendingDoctors, setPendingDoctors] = useState([])
+  const [activeStatus, setActiveStatus] = useState('pending')
+  const [approvalRecords, setApprovalRecords] = useState([])
   const [summaryCounts, setSummaryCounts] = useState({ pending: 0, approved: 0, rejected: 0 })
   const [loading, setLoading] = useState(true)
   const [selectedDoctor, setSelectedDoctor] = useState(null)
@@ -22,22 +44,29 @@ const AdminDashboard = () => {
   const [rejectReason, setRejectReason] = useState('')
   const [processingId, setProcessingId] = useState(null)
 
-  useEffect(() => {
-    fetchPendingDoctors()
-  }, [])
+  const activeTab = approvalTabs.find((tab) => tab.status === activeStatus) || approvalTabs[0]
 
-  const fetchPendingDoctors = async () => {
+  useEffect(() => {
+    fetchApprovals(activeStatus)
+  }, [activeStatus])
+
+  const fetchApprovals = async (status = activeStatus) => {
     setLoading(true)
     try {
-      const pendingRes = await profileService.getPendingDoctorApprovals()
-      setPendingDoctors(pendingRes.data?.pending || [])
-      setSummaryCounts(pendingRes.data?.summary || {
-        pending: pendingRes.data?.pending?.length || 0,
+      const [listRes, summaryRes] = await Promise.all([
+        profileService.getDoctorApprovalsByStatus(status),
+        profileService.getDoctorApprovalSummary(),
+      ])
+
+      const approvals = listRes.data?.approvals || []
+      setApprovalRecords(approvals)
+      setSummaryCounts(summaryRes.data?.summary || listRes.data?.summary || {
+        pending: status === 'pending' ? approvals.length : 0,
         approved: 0,
         rejected: 0,
       })
     } catch (err) {
-      showToast(err.response?.data?.error || 'Failed to load pending approvals', 'error')
+      showToast(err.response?.data?.error || 'Failed to load approval records', 'error')
     } finally {
       setLoading(false)
     }
@@ -69,10 +98,10 @@ const AdminDashboard = () => {
     try {
       await profileService.approveDoctorRequest(approvalId)
       showToast('Doctor approved successfully', 'success')
-      await fetchPendingDoctors()
+      await fetchApprovals(activeStatus)
     } catch (err) {
       showToast(err.response?.data?.error || 'Failed to approve doctor', 'error')
-      await fetchPendingDoctors()
+      await fetchApprovals(activeStatus)
     } finally {
       setProcessingId(null)
     }
@@ -101,10 +130,10 @@ const AdminDashboard = () => {
       setShowRejectModal(false)
       setRejectReason('')
       setSelectedDoctor(null)
-      await fetchPendingDoctors()
+      await fetchApprovals(activeStatus)
     } catch (err) {
       showToast(err.response?.data?.error || 'Failed to reject doctor', 'error')
-      await fetchPendingDoctors()
+      await fetchApprovals(activeStatus)
     } finally {
       setProcessingId(null)
     }
@@ -126,6 +155,18 @@ const AdminDashboard = () => {
     }
   }
 
+  const renderStatusSummary = (doctor) => {
+    if (doctor.status === 'approved') {
+      return `Approved${doctor.reviewedAt ? ` on ${new Date(doctor.reviewedAt).toLocaleDateString()}` : ''}`
+    }
+
+    if (doctor.status === 'rejected') {
+      return `Rejected${doctor.reviewedAt ? ` on ${new Date(doctor.reviewedAt).toLocaleDateString()}` : ''}`
+    }
+
+    return `Submitted on ${new Date(doctor.submittedAt).toLocaleDateString()}`
+  }
+
   return (
     <div className="min-h-screen" style={{ background: '#f4f7fb' }}>
       <Toast toast={toast} />
@@ -142,30 +183,44 @@ const AdminDashboard = () => {
         </div>
 
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-          {[
-            { label: 'Pending Reviews', value: summaryCounts.pending, accent: '#2d5a8e' },
-            { label: 'Approved Doctors', value: summaryCounts.approved, accent: '#64748b' },
-            { label: 'Rejected Requests', value: summaryCounts.rejected, accent: '#94a3b8' },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="rounded-2xl border bg-white p-6"
-              style={{ borderColor: '#e6ecf5', boxShadow: '0 4px 18px rgba(45,90,142,0.06)' }}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="mb-1 text-sm font-medium text-[#6b7280]">{item.label}</p>
-                  <div className="text-4xl font-bold text-[#1a2a3a]">{item.value}</div>
+          {approvalTabs.map((item) => {
+            const isActive = activeStatus === item.status
+            const count = summaryCounts[item.status] ?? 0
+
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => setActiveStatus(item.status)}
+                className="rounded-2xl border bg-white p-6 text-left transition-all duration-200"
+                style={{
+                  borderColor: isActive ? '#2d5a8e' : '#e6ecf5',
+                  boxShadow: isActive ? '0 10px 24px rgba(45,90,142,0.12)' : '0 4px 18px rgba(45,90,142,0.06)',
+                  transform: isActive ? 'translateY(-1px)' : 'none',
+                }}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="mb-1 text-sm font-medium text-[#6b7280]">{item.label}</p>
+                    <div className="text-4xl font-bold text-[#1a2a3a]">{count}</div>
+                  </div>
+                  <div
+                    className="mt-1 h-3 w-3 rounded-full"
+                    style={{ background: isActive ? '#2d5a8e' : '#94a3b8' }}
+                  />
                 </div>
-                <div className="mt-1 h-3 w-3 rounded-full" style={{ background: item.accent }} />
-              </div>
-            </div>
-          ))}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="mb-4 text-sm text-[#6b7280]">
+          Tap a card to filter the table by status. Showing {activeTab.label.toLowerCase()}.
         </div>
 
         <div className="mb-8 flex justify-end">
           <button
-            onClick={fetchPendingDoctors}
+            onClick={() => fetchApprovals(activeStatus)}
             disabled={loading}
             className="rounded-xl border px-4 py-2 font-medium transition-all duration-200"
             style={{
@@ -183,25 +238,26 @@ const AdminDashboard = () => {
         {loading && (
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 inline-block text-4xl">⏳</div>
-            <p className="text-[#8a9ab0]">Loading pending approvals...</p>
+            <p className="text-[#8a9ab0]">Loading {activeTab.label.toLowerCase()}...</p>
           </div>
         )}
 
-        {!loading && pendingDoctors.length === 0 && (
+        {!loading && approvalRecords.length === 0 && (
           <div
             className="rounded-2xl border bg-white py-14 text-center"
             style={{ borderColor: '#e6ecf5', boxShadow: '0 4px 18px rgba(45,90,142,0.06)' }}
           >
             <div className="mb-4 text-5xl">✅</div>
-            <p className="mb-2 text-lg font-semibold text-[#1a2a3a]">No Pending Requests</p>
-            <p className="text-[#6b7280]">All doctor profiles have been reviewed.</p>
+            <p className="mb-2 text-lg font-semibold text-[#1a2a3a]">{activeTab.emptyTitle}</p>
+            <p className="text-[#6b7280]">{activeTab.emptyMessage}</p>
           </div>
         )}
 
-        {!loading && pendingDoctors.length > 0 && (
+        {!loading && approvalRecords.length > 0 && (
           <div className="space-y-4">
-            {pendingDoctors.map((doctor) => {
+            {approvalRecords.map((doctor) => {
               const badge = badgeStyles[doctor.status] || badgeStyles.pending
+
               return (
                 <div
                   key={doctor.approvalId}
@@ -243,9 +299,19 @@ const AdminDashboard = () => {
                             <p className="text-sm font-semibold text-[#1a2a3a]">{doctor.doctor.address || 'N/A'}</p>
                           </div>
                           <div>
-                            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#4a5a6a]">Submitted</p>
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#4a5a6a]">Status</p>
+                            <p className="text-sm font-semibold text-[#1a2a3a] capitalize">{doctor.status}</p>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#4a5a6a]">
+                              {doctor.status === 'pending' ? 'Submitted' : 'Reviewed'}
+                            </p>
                             <p className="text-sm font-semibold text-[#1a2a3a]">
-                              {new Date(doctor.submittedAt).toLocaleDateString()}
+                              {doctor.status === 'pending'
+                                ? new Date(doctor.submittedAt).toLocaleDateString()
+                                : doctor.reviewedAt
+                                  ? new Date(doctor.reviewedAt).toLocaleDateString()
+                                  : 'N/A'}
                             </p>
                           </div>
                         </div>
@@ -260,12 +326,16 @@ const AdminDashboard = () => {
                         >
                           View Details
                         </button>
-                        <button
-                          onClick={() => downloadCertificate(doctor.certificateFileId, `certificate-${doctor.doctor.id}.pdf`)}
-                          className="block text-xs font-medium text-[#64748b] transition-colors hover:text-[#1a2a3a]"
-                        >
-                          Download
-                        </button>
+                        {doctor.certificateFileId ? (
+                          <button
+                            onClick={() => downloadCertificate(doctor.certificateFileId, `certificate-${doctor.doctor.id}.pdf`)}
+                            className="block text-xs font-medium text-[#64748b] transition-colors hover:text-[#1a2a3a]"
+                          >
+                            Download
+                          </button>
+                        ) : (
+                          <span className="block text-xs font-medium text-[#cbd5e1]">No certificate</span>
+                        )}
                       </div>
                     </div>
 
@@ -300,11 +370,20 @@ const AdminDashboard = () => {
                           </button>
                         </div>
                       ) : (
-                        <div
-                          className="rounded-lg py-3 text-center font-semibold"
-                          style={{ background: '#f8fafc', color: '#64748b' }}
-                        >
-                          {doctor.status === 'approved' ? 'Already Approved' : 'Already Rejected'}
+                        <div className="space-y-3">
+                          <div
+                            className="rounded-lg py-3 text-center font-semibold"
+                            style={{ background: '#f8fafc', color: '#64748b' }}
+                          >
+                            {renderStatusSummary(doctor)}
+                          </div>
+
+                          {doctor.status === 'rejected' && doctor.adminMessage && (
+                            <div className="rounded-lg border border-[#f1d7d7] bg-[#fff7f7] px-4 py-3 text-sm text-[#9f3a3a]">
+                              <p className="mb-1 font-semibold">Rejection reason</p>
+                              <p>{doctor.adminMessage}</p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -331,7 +410,7 @@ const AdminDashboard = () => {
                   onClick={handleCloseCertificate}
                   className="text-2xl leading-none text-[#6b7280] transition-opacity hover:opacity-70"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
             </div>
@@ -441,6 +520,14 @@ const AdminDashboard = () => {
                         <p className="mb-1 text-[#6b7280]">Submitted</p>
                         <p className="font-semibold text-[#1a2a3a]">{new Date(selectedDoctorDetails.approval.submittedAt).toLocaleDateString()}</p>
                       </div>
+                      <div>
+                        <p className="mb-1 text-[#6b7280]">Reviewed</p>
+                        <p className="font-semibold text-[#1a2a3a]">
+                          {selectedDoctorDetails.approval.reviewedAt
+                            ? new Date(selectedDoctorDetails.approval.reviewedAt).toLocaleDateString()
+                            : 'N/A'}
+                        </p>
+                      </div>
                       {selectedDoctorDetails.approval.adminMessage && (
                         <div className="col-span-2">
                           <p className="mb-1 text-[#6b7280]">Admin Message</p>
@@ -503,6 +590,7 @@ const AdminDashboard = () => {
                 onClick={() => {
                   setShowRejectModal(false)
                   setRejectReason('')
+                  setSelectedDoctor(null)
                 }}
                 className="flex-1 rounded-lg border border-[#d5deea] py-2.5 font-medium text-[#6b7280] transition-colors hover:bg-[#f8fafc]"
               >
