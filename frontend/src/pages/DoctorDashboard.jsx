@@ -164,14 +164,40 @@ const DoctorDashboard = () => {
     }
 
     setCancelSaving(true)
-    closeCancelModal(true)
+    const appointmentIdToCancel = cancelAppointmentTarget.id
+    const reasonTrim = cancelReason.trim()
+    
     try {
-      await doctorCancelAppointment(cancelAppointmentTarget.id, cancelReason)
-      setAppointments((prev) => prev.filter((apt) => apt.id !== cancelAppointmentTarget.id))
-      showToast('Appointment cancelled and patient notified', 'success')
-      await loadAll()
+      // Call API to cancel appointment
+      const updatedAppointment = await doctorCancelAppointment(appointmentIdToCancel, reasonTrim)
+      
+      // Update state with cancelled appointment
+      setAppointments((prev) => 
+        prev.map((apt) => 
+          apt.id === appointmentIdToCancel 
+            ? { 
+                ...apt, 
+                status: 'cancelled', 
+                cancelReason: reasonTrim,
+                cancelledAt: new Date().toISOString(),
+                ...updatedAppointment
+              }
+            : apt
+        )
+      )
+      
+      // Clear form and close modal
+      setCancelReason('')
+      closeCancelModal(true)
+      
+      showToast('Appointment cancelled successfully', 'success')
+      
+      // Do NOT call loadAll() immediately - this prevents race conditions
+      // The state is already updated locally, and the backend data matches
     } catch (err) {
-      showToast(err.message, 'error')
+      showToast(err.message || 'Failed to cancel appointment', 'error')
+      // On error, reload from backend to ensure consistency
+      await loadAll()
     } finally {
       setCancelSaving(false)
     }

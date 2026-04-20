@@ -1,6 +1,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const FileModel = require('../models/File');
 const { calculateFileHash } = require('../utils/helpers');
 
@@ -11,15 +12,15 @@ if (!fs.existsSync(uploadsDir)) {
   console.log('Storage directory created at:', uploadsDir);
 }
 
-// Multer storage configuration
+// Multer storage configuration with temporary naming
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
+    // Generate temporary filename (will be renamed after upload)
+    const tempName = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
+    cb(null, tempName);
   }
 });
 
@@ -135,26 +136,50 @@ class FileController {
       // Read file and calculate hash
       const fileBuffer = fs.readFileSync(req.file.path);
       const hashValue = calculateFileHash(fileBuffer);
+      
+      // Generate hashed filename with proper extension
+      const fileExt = path.extname(req.file.originalname);
+      const hashedFileName = `${hashValue}${fileExt}`;
+      const hashedFilePath = path.join(uploadsDir, hashedFileName);
+      
+      // Rename temp file to hashed filename
+      fs.renameSync(req.file.path, hashedFilePath);
+      console.log(`✅ File renamed from temp to hashed: ${path.basename(hashedFilePath)}`);
 
-      // Save to database
+      // Save to database with hashed path
       const fileId = await FileModel.create(
         userId,
         req.file.originalname,
-        req.file.path,
+        hashedFilePath,
         fileType,
         hashValue
       );
 
-      console.log('✅ File uploaded successfully:', { fileId, fileName: req.file.originalname, fileType });
+      console.log('✅ File uploaded successfully:', { 
+        fileId, 
+        fileName: req.file.originalname, 
+        hashedFileName,
+        fileType,
+        hash: hashValue.substring(0, 16) + '...'
+      });
 
       res.status(201).json({
         message: 'File uploaded successfully',
         fileId,
         fileName: req.file.originalname,
-        fileType
+        fileType,
+        hashedFileName
       });
     } catch (error) {
       console.error('❌ File upload error:', error);
+      // Clean up temp file if rename failed
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (e) {
+          console.error('Could not clean up temp file:', e.message);
+        }
+      }
       res.status(500).json({ error: error.message || 'Upload failed' });
     }
   }

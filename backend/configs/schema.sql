@@ -228,25 +228,6 @@ CREATE TABLE record_access (
 );
 
 -- ==============================
--- REVIEWS
--- ==============================
-CREATE TABLE reviews (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    appointment_id INT UNIQUE,
-    patient_id INT,
-    doctor_id INT,
-
-    rating INT CHECK (rating BETWEEN 1 AND 5),
-    comment TEXT,
-
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
-    FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- ==============================
 -- NOTIFICATIONS
 -- ==============================
 CREATE TABLE notifications (
